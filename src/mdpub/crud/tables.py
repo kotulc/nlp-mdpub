@@ -12,27 +12,30 @@ from sqlmodel import Field, SQLModel
 
 
 class DocumentMeta(SQLModel, table=True):
+    """Normalized key-value pairs for computed metadata about a document (e.g. word counts, metrics, etc.)"""
     __tablename__ = "document_meta"
-    document_id: UUID = Field(foreign_key="documents.id", index=True, nullable=False)
+    document_id: UUID = Field(foreign_key="documents.id", primary_key=True, nullable=False)
     key: str = Field(primary_key=True)
     value: str = Field(..., nullable=False)
     document: Mapped[Optional["Document"]] = Relationship(back_populates="meta")
 
 
 class Document(SQLModel, table=True):
+    """A markdown document and the originating content source of truth"""
     __tablename__ = "documents"
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     slug: str = Field(..., index=True, unique=True, nullable=False)
     markdown: str = Field(..., sa_column=Column(Text, nullable=False))
     hash: str = Field(..., sa_column=Column(String(64), nullable=False))
-    frontmatter: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(Text, nullable=True))
+    frontmatter: Optional[Dict[str, Any]] = Field(default=None, description="Parsed document frontmatter as a JSON/dict object")
     created_at: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime(timezone=False), nullable=False))
     updated_at: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime(timezone=False), nullable=False))
     sections: Mapped[List["Section"]] = Relationship(back_populates="document")
-    meta: Mapped[List[DocumentMeta]] = Relationship(back_populates="document")
+    meta: Mapped[List[DocumentMeta]] = Relationship(back_populates="document", description="Key-value pairs for computed metadata")
 
 
 class SectionBlockEnum(str, Enum):
+    """Restrict the types of content blocks to a predefined set of elements"""
     content = "content"
     heading = "heading"
     paragraph = "paragraph"
@@ -43,12 +46,13 @@ class SectionBlockEnum(str, Enum):
 
 
 class SectionBlock(SQLModel, table=True):
+    """The fundamental unit of ordered content within a given section"""
     __tablename__ = "section_blocks"
     id: UUID = Field(..., primary_key=True)
-    section_id: UUID = Field(..., foreign_key="sections.id", primary_key=True)
+    section_id: UUID = Field(..., foreign_key="sections.id")
     content: str = Field(..., sa_column=Column(Text, nullable=False))
     hash: str = Field(..., sa_column=Column(String(64), nullable=False))
-    type: str = Field(..., nullable=False, description="Type of content block (e.g. heading, etc.)")
+    type: SectionBlockEnum = Field(..., nullable=False, description="Type of content block (e.g. heading, etc.)")
     position: float = Field(..., nullable=False, description="Position of the block within the section")
     updated_at: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime(timezone=False), nullable=False))
     level: Optional[int] = Field(default=None, description="Nesting/indentation/heading level")
@@ -56,6 +60,7 @@ class SectionBlock(SQLModel, table=True):
 
 
 class SectionMetric(SQLModel, table=True):
+    """Section content based metrics (e.g. toxicity, sentiment, spam, etc.)"""
     __tablename__ = "section_metrics"
     section_id: UUID = Field(..., foreign_key="sections.id", primary_key=True)
     name: str = Field(..., primary_key=True)
@@ -65,6 +70,7 @@ class SectionMetric(SQLModel, table=True):
 
 
 class SectionTag(SQLModel, table=True):
+    """Many-to-many relationship between sections and tags"""
     __tablename__ = "section_tags"
     section_id: UUID = Field(foreign_key="sections.id", primary_key=True)
     tag_name: str = Field(foreign_key="tags.name", primary_key=True)
@@ -73,9 +79,11 @@ class SectionTag(SQLModel, table=True):
 
 
 class Section(SQLModel, table=True):
+    """Logical grouping of content blocks within a document, representing a top-level section"""
     __tablename__ = "sections"
     id: UUID = Field(default_factory=uuid4, primary_key=True)
     document_id: UUID = Field(foreign_key="documents.id", index=True, nullable=False)
+    hash: str = Field(..., sa_column=Column(String(64), nullable=False))
     position: int = Field(..., description="Position of the section within the document")
     hidden: bool = Field(default=False, nullable=False, description="Whether the section is hidden")
     document: Mapped[Document] = Relationship(back_populates="sections")
@@ -85,6 +93,7 @@ class Section(SQLModel, table=True):
 
 
 class Tag(SQLModel, table=True):
+    """A tag or label that can be associated with sections for categorization, filtering, etc."""
     __tablename__ = "tags"
     name: str = Field(primary_key=True)
     category: str = Field(..., sa_column=Column(String(64), nullable=False))

@@ -3,7 +3,7 @@ CLI pipeline for decomposing Markdown documents into structured content — pers
 
 General Workflow:
 ```
-MD/MDX → parse → extract(configs) → store → export(configs) MD/MDX + JSON
+MD/MDX → parse → extract(configs) → store → export(configs) → MD/MDX + JSON
 ```
 
 
@@ -22,7 +22,7 @@ Each step is a discrete CLI command that can run independently or be chained:
 
 ```
 mdpub build <path>      # run the entire pipeline (all of the following commands)
-mdpub init              # initialize database schema and clears stored data
+mdpub init              # initialize database schema and optionally clears stored data
 mdpub extract <path>    # recursively extract blocks, frontmatter, and content hash
 mdpub commit            # upsert parsed document data to the database
 mdpub export            # write standardized MD/MDX + sidecar JSON to output dir
@@ -63,7 +63,6 @@ The command line interface package contains all modules that define the CLI app,
 cli/                
   cli.py            # CLI interface entrypoint (Typer command based)
   commands.py       # Defines available commands (e.g. init, extract, commit, export)
-  pipeline.py       # Orchestrates parse → export pipeline
   config.py         # Loads user options and configurations
 ```
 
@@ -82,7 +81,8 @@ core/
     slug.py         # Document slugification utility
     hashing.py      # SHA-256 content hashing utilities
   export.py         # Config based DB to MDX + JSON output logic
-  parse.py          # File discovery, markdown parsing, frontmatter and token conversion 
+  parse.py          # File discovery, markdown parsing, frontmatter and token conversion
+  pipeline.py       # Orchestrates parse → export pipeline
 ```
 
 
@@ -115,10 +115,10 @@ export MDPUB_DB_URL="postgresql+psycopg://user:pass@localhost/mdpub"
 
 ### Run the pipeline
 ```bash
-mdpub db-init
-mdpub parse docs/
-mdpub store
-mdpub emit --out dist/
+mdpub init
+mdpub extract docs/
+mdpub commit
+mdpub export --out dist/
 ```
 
 ### Output
@@ -143,7 +143,7 @@ ruff check .    # lint
 mypy src/       # type check
 ```
 
-### Code Style
+### Contributing
 
 #### IMPORTANT
 Focus on building readable, concise minimal blocks organized by function. Project maintainability and interpretability is the primary goal, everything else is secondary.
