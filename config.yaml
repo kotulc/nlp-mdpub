@@ -1,0 +1,7 @@
+# mdpub configuration — all values shown are defaults
+db_url: "sqlite:///mdpub.db"
+max_nesting: 6
+max_versions: 10
+output_dir: "dist"
+output_format: "mdx"
+parser_config: "gfm-like"

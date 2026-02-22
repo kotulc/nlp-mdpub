@@ -29,7 +29,7 @@ def unified_diff(
     from_label: str = "version_a",
     to_label: str = "version_b",
     context: int = 3,
-) -> list[str]:
+    ) -> list[str]:
     """Return unified diff lines comparing old to new. Empty list if identical.
 
     Returns a list of lines; join with '' for display (lines already include newlines).

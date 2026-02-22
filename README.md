@@ -134,7 +134,7 @@ The crud package is the data persistance layer that defines the interface surfac
 
 ```
 crud/
-  database.py        # Database engine, session, schema initialization
+  database.py       # Database engine, session, schema initialization
   tables.py         # SQLModel database schema definition
   versioning.py     # Support for document versioning logic
 ```
