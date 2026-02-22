@@ -157,7 +157,7 @@ Focus on building readable, concise, minimal functional blocks organized by purp
 The most important rule is to keep modules and code blocks simple and purposeful: Each module, class, function, block or call should have a single well-defined (and commented) purpose. DO NOT re-create the wheel, DO NOT add custom code when a common package will suffice. Add only the MINIMAL amount of code to implement the modules documented purpose.
 
 #### Do's
-- Be consistent with the style of the rest of the project
+- Be consistent with the style of the project and its conventions
 - Simple elegant terse lines and declarations are the goal; optimize for readability
 - Keep module, variable, class, and function names short (1-4 words) but distinct
 - Function and variable names are snake case and class names are camel case

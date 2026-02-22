@@ -17,10 +17,11 @@ class Document(SQLModel, table=True):
     """A markdown document and the originating content source of truth"""
     __tablename__ = "documents"
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    slug: str = Field(..., index=True, unique=True, nullable=False)
+    slug: str = Field(..., index=True, nullable=False)
     markdown: str = Field(..., sa_column=Column(Text, nullable=False))
     hash: str = Field(..., sa_column=Column(String(64), nullable=False))
     frontmatter: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON, nullable=True))
+    path: str = Field(..., sa_column=Column(Text, nullable=False, unique=True))
     created_at: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime(timezone=False), nullable=False))
     updated_at: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime(timezone=False), nullable=False))
     sections: Mapped[List["Section"]] = Relationship(back_populates="document")

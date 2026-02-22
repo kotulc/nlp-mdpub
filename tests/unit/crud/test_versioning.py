@@ -111,7 +111,7 @@ def test_list_versions_ordered(session, doc):
 
 def test_list_versions_isolates_by_doc(session, doc):
     """list_versions only returns versions for the given document_id."""
-    other = Document(slug="other-doc", markdown="other", hash=sha256("other"))
+    other = Document(slug="other-doc", markdown="other", hash=sha256("other"), path="docs/other-doc.md")
     session.add(other)
     session.flush()
     save_version(session, doc, max_versions=0)

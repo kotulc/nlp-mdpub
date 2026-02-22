@@ -6,12 +6,13 @@ from pathlib import Path
 from typing import Annotated, Optional
 
 import typer
-from sqlmodel import SQLModel
+from sqlmodel import Session, SQLModel
 
 from mdpub.config import load_config
 from mdpub.core.extract.extract import extract_doc
 from mdpub.core.parse import parse_dir
 from mdpub.crud.database import init_db, make_engine
+from mdpub.crud.documents import commit_doc
 from mdpub.crud.tables import SectionBlockEnum
 
 
@@ -71,7 +72,32 @@ def commit(
     db_url: Annotated[Optional[str], typer.Option("--db-url", help="Database URL override")] = None,
     ):
     """Upsert parsed document data to the database."""
-    raise NotImplementedError("commit is not yet implemented")
+    settings = load_config(config_path=config, overrides={"db_url": db_url})
+    engine = make_engine(settings.db_url)
+    init_db(engine)
+
+    staging = Path('.mdpub/staging')
+    files = sorted(staging.glob('*.json')) if staging.exists() else []
+    if not files:
+        typer.echo("Nothing staged. Run 'mdpub extract <path>' first.")
+        raise typer.Exit(1)
+
+    counts = {"created": 0, "updated": 0, "unchanged": 0}
+    with Session(engine) as session:
+        for f in files:
+            data = json.loads(f.read_text())
+            doc, status = commit_doc(session, data, settings.max_versions)
+            counts[status] += 1
+            if status != 'unchanged':
+                typer.echo(f"  {status}: {doc.slug}")
+        session.commit()
+
+    typer.echo(
+        f"Commit complete - "
+        f"{counts['created']} created, "
+        f"{counts['updated']} updated, "
+        f"{counts['unchanged']} unchanged"
+    )
 
 
 def export(

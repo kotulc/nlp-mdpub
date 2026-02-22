@@ -27,7 +27,7 @@ def session_fixture(engine):
 @pytest.fixture(name="doc")
 def doc_fixture(session):
     """A minimal Document persisted to the session."""
-    d = Document(slug="test-doc", markdown="# Hello\n\nWorld", hash=sha256("# Hello\n\nWorld"))
+    d = Document(slug="test-doc", markdown="# Hello\n\nWorld", hash=sha256("# Hello\n\nWorld"), path="docs/test-doc.md")
     session.add(d)
     session.flush()
     return d
