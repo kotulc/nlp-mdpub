@@ -24,6 +24,7 @@ class Document(SQLModel, table=True):
     path: str = Field(..., sa_column=Column(Text, nullable=False, unique=True))
     created_at: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime(timezone=False), nullable=False))
     updated_at: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime(timezone=False), nullable=False))
+    committed_at: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=False), nullable=True))
     sections: Mapped[List["Section"]] = Relationship(back_populates="document")
     meta: Mapped[List["DocumentMeta"]] = Relationship(back_populates="document")
 

@@ -1,12 +1,16 @@
 """Unit tests for crud/documents.py"""
 
+from datetime import datetime
 from uuid import uuid4
 
 import pytest
 from sqlmodel import Session, select
 
 from mdpub.core.utils.hashing import sha256
-from mdpub.crud.documents import commit_doc, get_by_path, get_by_slug, _replace_sections
+from mdpub.crud.documents import (
+    commit_doc, get_by_path, get_by_slug, _replace_sections,
+    get_last_committed, get_by_collection, get_all_documents, list_collections,
+)
 from mdpub.crud.models import Document, DocumentVersion, Section, SectionBlock, SectionBlockEnum
 
 
@@ -239,3 +243,86 @@ def test_replace_sections_clears_old(session, doc):
     all_sections = session.exec(select(Section).where(Section.document_id == doc.id)).all()
     assert len(all_sections) == 1
     assert all_sections[0].hash == sha256("replacement")
+
+
+# --- committed_at ---
+
+def test_commit_doc_sets_committed_at_on_create(session):
+    """committed_at is set on newly created documents."""
+    ts = datetime.now()
+    data = _make_staged(slug="new-ts", path="docs/new-ts.md")
+    doc, _ = commit_doc(session, data, committed_at=ts)
+    assert doc.committed_at == ts
+
+
+def test_commit_doc_sets_committed_at_on_update(session):
+    """committed_at is updated when a document is updated."""
+    ts1 = datetime(2026, 1, 1)
+    data = _make_staged(slug="update-ts", path="docs/update-ts.md", markdown="# v1")
+    doc, _ = commit_doc(session, data, committed_at=ts1)
+
+    ts2 = datetime(2026, 2, 1)
+    data2 = _make_staged(slug="update-ts", path="docs/update-ts.md", markdown="# v2")
+    doc2, _ = commit_doc(session, data2, committed_at=ts2)
+    assert doc2.committed_at == ts2
+
+
+def test_commit_doc_does_not_update_committed_at_on_unchanged(session):
+    """committed_at is not changed when a document is unchanged."""
+    ts1 = datetime(2026, 1, 1)
+    data = _make_staged(slug="stable-ts", path="docs/stable-ts.md")
+    doc, _ = commit_doc(session, data, committed_at=ts1)
+
+    ts2 = datetime(2026, 2, 1)
+    doc2, status = commit_doc(session, data, committed_at=ts2)
+    assert status == "unchanged"
+    assert doc2.committed_at == ts1
+
+
+# --- query helpers ---
+
+def test_get_last_committed_returns_batch(session):
+    """Returns only documents from the most recent commit batch."""
+    ts1 = datetime(2026, 1, 1)
+    ts2 = datetime(2026, 2, 1)
+    commit_doc(session, _make_staged(slug="old", path="docs/old.md"), committed_at=ts1)
+    commit_doc(session, _make_staged(slug="new", path="docs/new.md"), committed_at=ts2)
+
+    result = get_last_committed(session)
+    slugs = {d.slug for d in result}
+    assert slugs == {"new"}
+
+
+def test_get_last_committed_empty(session):
+    """Returns [] when no documents have a committed_at timestamp."""
+    result = get_last_committed(session)
+    assert result == []
+
+
+def test_get_by_collection_matches_prefix(session):
+    """Returns docs whose path starts with the collection prefix."""
+    commit_doc(session, _make_staged(slug="a", path="docs/a.md"))
+    commit_doc(session, _make_staged(slug="b", path="docs/sub/b.md"))
+    commit_doc(session, _make_staged(slug="c", path="posts/c.md"))
+
+    result = get_by_collection(session, "docs")
+    slugs = {d.slug for d in result}
+    assert slugs == {"a", "b"}
+
+
+def test_get_all_documents(session):
+    """Returns all documents in the database."""
+    commit_doc(session, _make_staged(slug="x", path="x.md"))
+    commit_doc(session, _make_staged(slug="y", path="y.md"))
+    assert len(get_all_documents(session)) == 2
+
+
+def test_list_collections_distinct(session):
+    """Returns sorted distinct top-level path components."""
+    commit_doc(session, _make_staged(slug="a1", path="docs/a.md"))
+    commit_doc(session, _make_staged(slug="a2", path="docs/b.md"))
+    commit_doc(session, _make_staged(slug="p1", path="posts/p.md"))
+    commit_doc(session, _make_staged(slug="r1", path="readme.md"))
+
+    cols = list_collections(session)
+    assert cols == [".", "docs", "posts"]

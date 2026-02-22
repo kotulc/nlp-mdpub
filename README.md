@@ -25,6 +25,7 @@ mdpub build <path>    # run the entire pipeline (all of the following commands)
 mdpub init            # initialize database schema and optionally clears stored data
 mdpub extract <path>  # recursively extract blocks, frontmatter, and content hash
 mdpub commit          # upsert parsed document data to the database
+mdpub list            # list collections (top-level source directories) stored in the database
 mdpub export          # write standardized MD/MDX + sidecar JSON to output dir
 ```
 
@@ -67,7 +68,10 @@ mdpub build docs/ --dir dist/
 mdpub init
 mdpub extract docs/
 mdpub commit
-mdpub export --dir dist/
+mdpub export                        # export documents from the last commit
+mdpub export --collection docs      # export all documents under docs/
+mdpub export --all --out-dir dist/  # export every document to dist/
+mdpub list                          # list available collections
 ```
 
 ### Output
@@ -136,7 +140,7 @@ The crud package is the data persistance layer that defines the interface surfac
 crud/
   database.py         # Database engine, session, schema initialization
   documents.py        # Document and section persistence
-  tables.py           # SQLModel database schema definition
+  models.py           # SQLModel database schema definition
   versioning.py       # Support for document versioning logic
 ```
 
