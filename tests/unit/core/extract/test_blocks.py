@@ -4,7 +4,7 @@ import pytest
 from markdown_it import MarkdownIt
 
 from mdpub.core.extract.blocks import tokens_to_blocks
-from mdpub.crud.tables import SectionBlockEnum
+from mdpub.crud.models import SectionBlockEnum
 
 
 @pytest.fixture(name="parser")

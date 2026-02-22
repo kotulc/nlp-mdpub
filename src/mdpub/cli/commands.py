@@ -13,7 +13,7 @@ from mdpub.core.extract.extract import extract_doc
 from mdpub.core.parse import parse_dir
 from mdpub.crud.database import init_db, make_engine
 from mdpub.crud.documents import commit_doc
-from mdpub.crud.tables import SectionBlockEnum
+from mdpub.crud.models import SectionBlockEnum
 
 
 def build(

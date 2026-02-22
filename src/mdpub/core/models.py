@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from mdpub.crud.tables import SectionBlockEnum
+from mdpub.crud.models import SectionBlockEnum
 
 
 @dataclass

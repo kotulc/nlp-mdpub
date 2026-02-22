@@ -1,4 +1,4 @@
-"""Databse table definitions for documents, sections, content blocks, etc."""
+"""Database table definitions for documents, sections, content blocks, etc."""
 
 from datetime import datetime
 from enum import Enum

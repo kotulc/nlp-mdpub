@@ -1,6 +1,6 @@
 """Token-to-SectionBlock conversion using source line positions"""
 
-from mdpub.crud.tables import SectionBlockEnum
+from mdpub.crud.models import SectionBlockEnum
 from mdpub.core.models import ExtractedBlock
 from mdpub.core.utils.hashing import sha256
 

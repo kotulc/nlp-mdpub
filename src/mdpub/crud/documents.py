@@ -5,7 +5,7 @@ from uuid import uuid4
 
 from sqlmodel import Session, select
 
-from mdpub.crud.tables import Document, Section, SectionBlock, SectionBlockEnum
+from mdpub.crud.models import Document, Section, SectionBlock, SectionBlockEnum
 from mdpub.crud.versioning import save_version
 
 

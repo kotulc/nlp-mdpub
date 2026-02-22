@@ -7,7 +7,7 @@ from uuid import UUID
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from mdpub.crud.tables import Document, DocumentVersion
+from mdpub.crud.models import Document, DocumentVersion
 from mdpub.core.utils.diff import unified_diff
 
 

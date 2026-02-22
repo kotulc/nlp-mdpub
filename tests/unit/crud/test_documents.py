@@ -7,7 +7,7 @@ from sqlmodel import Session, select
 
 from mdpub.core.utils.hashing import sha256
 from mdpub.crud.documents import commit_doc, get_by_path, get_by_slug, _replace_sections
-from mdpub.crud.tables import Document, DocumentVersion, Section, SectionBlock, SectionBlockEnum
+from mdpub.crud.models import Document, DocumentVersion, Section, SectionBlock, SectionBlockEnum
 
 
 # --- helpers ---

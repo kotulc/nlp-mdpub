@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import create_engine
 from sqlmodel import SQLModel, Session
 
-from mdpub.crud.tables import Document
+from mdpub.crud.models import Document
 from mdpub.core.utils.hashing import sha256
 
 

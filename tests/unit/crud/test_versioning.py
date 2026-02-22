@@ -5,7 +5,7 @@ import pytest
 from sqlmodel import Session, select
 
 from mdpub.core.utils.hashing import sha256
-from mdpub.crud.tables import Document, DocumentVersion
+from mdpub.crud.models import Document, DocumentVersion
 from mdpub.crud.versioning import (
     diff_versions, list_versions, prune_versions, revert_to_version, save_version
 )

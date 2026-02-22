@@ -6,7 +6,7 @@ from sqlmodel import SQLModel
 from uuid import uuid4
 
 from mdpub.core.utils.hashing import sha256
-from mdpub.crud.tables import (
+from mdpub.crud.models import (
     Document, DocumentMeta, DocumentVersion, Section, SectionBlock, SectionBlockEnum
 )
 
