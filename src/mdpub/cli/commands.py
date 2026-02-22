@@ -1,8 +1,5 @@
 """CLI command implementations"""
 
-import dataclasses
-import json
-from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -10,18 +7,14 @@ import typer
 from sqlmodel import Session, SQLModel
 
 from mdpub.config import load_config
-from mdpub.core.export import write_doc
-from mdpub.core.extract.extract import extract_doc
-from mdpub.core.parse import parse_dir
+from mdpub.core.pipeline import STAGING, run_commit, run_export, run_extract
 from mdpub.crud.database import init_db, make_engine
 from mdpub.crud.documents import (
-    commit_doc,
     get_all_documents,
     get_by_collection,
     get_last_committed,
     list_collections,
 )
-from mdpub.crud.models import SectionBlockEnum
 
 
 def build_cmd(
@@ -31,7 +24,35 @@ def build_cmd(
     out: Annotated[Optional[str], typer.Option("--out-dir", help="Output directory override")] = None,
     ):
     """Run the full pipeline: extract -> commit -> export."""
-    raise NotImplementedError("build is not yet implemented")
+    settings = load_config(config_path=config, overrides={"db_url": db_url, "output_dir": out})
+    engine = make_engine(settings.db_url)
+    init_db(engine)
+
+    # --- extract ---
+    extracted = run_extract(path, settings.parser_config, settings.max_nesting)
+    for src, out_file in extracted:
+        typer.echo(f"  {src} -> {out_file}")
+    typer.echo(f"Extracted {len(extracted)} document(s) to {STAGING}/")
+
+    # --- commit ---
+    counts, changes = run_commit(engine, settings.max_versions)
+    for status, slug in changes:
+        typer.echo(f"  {status}: {slug}")
+    typer.echo(
+        f"Commit complete - "
+        f"{counts['created']} created, "
+        f"{counts['updated']} updated, "
+        f"{counts['unchanged']} unchanged"
+    )
+
+    # --- export ---
+    output_dir = Path(settings.output_dir)
+    with Session(engine) as session:
+        exported = get_last_committed(session)
+        results = run_export(session, exported, output_dir, settings.output_format)
+    for slug, mdx_path in results:
+        typer.echo(f"  {slug} -> {mdx_path}")
+    typer.echo(f"Exported {len(results)} document(s) to {output_dir}/")
 
 
 def list_cmd(
@@ -73,23 +94,10 @@ def extract_cmd(
     ):
     """Recursively extract blocks, frontmatter, and content hash."""
     settings = load_config(config_path=config, overrides={"db_url": db_url})
-
-    def _serial(obj):
-        if isinstance(obj, SectionBlockEnum):
-            return obj.value
-        raise TypeError(type(obj))
-
-    staging = Path('.mdpub/staging')
-    staging.mkdir(parents=True, exist_ok=True)
-
-    docs = parse_dir(Path(path), settings.parser_config)
-    for parsed in docs:
-        extracted = extract_doc(parsed, settings.max_nesting)
-        out = staging / f"{extracted.slug}.json"
-        out.write_text(json.dumps(dataclasses.asdict(extracted), default=_serial, indent=2))
-        typer.echo(f"  {parsed.path} -> {out}")
-
-    typer.echo(f"Extracted {len(docs)} document(s) to {staging}/")
+    results = run_extract(path, settings.parser_config, settings.max_nesting)
+    for src, out_file in results:
+        typer.echo(f"  {src} -> {out_file}")
+    typer.echo(f"Extracted {len(results)} document(s) to {STAGING}/")
 
 
 def commit_cmd(
@@ -101,23 +109,13 @@ def commit_cmd(
     engine = make_engine(settings.db_url)
     init_db(engine)
 
-    staging = Path('.mdpub/staging')
-    files = sorted(staging.glob('*.json')) if staging.exists() else []
-    if not files:
+    counts, changes = run_commit(engine, settings.max_versions)
+    if not counts:
         typer.echo("Nothing staged. Run 'mdpub extract <path>' first.")
         raise typer.Exit(1)
 
-    committed_at = datetime.now()
-    counts = {"created": 0, "updated": 0, "unchanged": 0}
-    with Session(engine) as session:
-        for f in files:
-            data = json.loads(f.read_text())
-            doc, status = commit_doc(session, data, settings.max_versions, committed_at)
-            counts[status] += 1
-            if status != 'unchanged':
-                typer.echo(f"  {status}: {doc.slug}")
-        session.commit()
-
+    for status, slug in changes:
+        typer.echo(f"  {status}: {slug}")
     typer.echo(
         f"Commit complete - "
         f"{counts['created']} created, "
@@ -154,8 +152,8 @@ def export_cmd(
             typer.echo(f"No documents found for scope: {scope}.")
             raise typer.Exit(1)
 
-        for doc in docs:
-            mdx_path, _ = write_doc(doc, session, output_dir, settings.output_format)
-            typer.echo(f"  {doc.slug} -> {mdx_path}")
+        results = run_export(session, docs, output_dir, settings.output_format)
 
-    typer.echo(f"Exported {len(docs)} document(s) to {output_dir}/")
+    for slug, mdx_path in results:
+        typer.echo(f"  {slug} -> {mdx_path}")
+    typer.echo(f"Exported {len(results)} document(s) to {output_dir}/")
