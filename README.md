@@ -1,5 +1,5 @@
 # mdpub
-CLI pipeline for decomposing Markdown documents into structured content — persisted to a database and emitted as standardized MD/MDX + JSON for static site publishing.
+A CLI pipeline for decomposing Markdown documents into structured content — persisted to a database and emitted as standardized MD/MDX + JSON for static site publishing.
 
 General Workflow:
 ```
@@ -40,6 +40,49 @@ The standardized structure of the returned MD/MDX documents is fully configurabl
 - output_dir (str): The output directory to export results to
 - output_format (str): Desired markdown output format, "md" or "mdx" 
 - parser_config (str): MarkdownIt parser configuration preset name, defaults to "gfm-like"
+
+
+## Quickstart
+
+### Install
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -U pip
+pip install -e ".[dev]"
+```
+
+### PostgreSQL support (optional)
+```bash
+pip install -e ".[dev,postgres]"
+export MDPUB_DB_URL="postgresql+psycopg://user:pass@localhost/mdpub"
+```
+
+### Run the pipeline
+```bash
+# Single command:
+mdpub build docs/ --dir dist/
+
+# Or in stages:
+mdpub init
+mdpub extract docs/
+mdpub commit
+mdpub export --dir dist/
+```
+
+### Output
+For each document, `export` produces:
+
+| File | Description |
+|------|-------------|
+| `<slug>.mdx` | Standardized MDX with merged frontmatter (slug, doc_id, hash, tags) |
+| `<slug>.json` | Full metadata: frontmatter, blocks, metrics, version history |
+
+
+### Persistance
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MDPUB_DB_URL` | `sqlite:///mdpub.db` | SQLAlchemy database URL |
 
 
 ## Architecture
@@ -97,46 +140,7 @@ crud/
 ```
 
 
-## Quickstart
-
-### Install
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -U pip
-pip install -e ".[dev]"
-```
-
-### PostgreSQL support (optional)
-```bash
-pip install -e ".[dev,postgres]"
-export MDPUB_DB_URL="postgresql+psycopg://user:pass@localhost/mdpub"
-```
-
-### Run the pipeline
-```bash
-mdpub init
-mdpub extract docs/
-mdpub commit
-mdpub export --out dist/
-```
-
-### Output
-For each document, `emit` produces:
-
-| File | Description |
-|------|-------------|
-| `<slug>.mdx` | Standardized MDX with merged frontmatter (slug, doc_id, hash, tags) |
-| `<slug>.json` | Full metadata: frontmatter, blocks, metrics, version history |
-
-
-### Persistance
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MDPUB_DB_URL` | `sqlite:///mdpub.db` | SQLAlchemy database URL |
-
-
-### Development
+## Development
 ```bash
 pytest          # run tests
 ruff check .    # lint
@@ -144,8 +148,10 @@ mypy src/       # type check
 ```
 
 ### Contributing
+This repository is currently in early development but feel free to submit PRs as long as all updates align with the following conventions...
 
-#### IMPORTANT
+
+#### Development Conventions
 Focus on building readable, concise minimal blocks organized by function. Project maintainability and interpretability is the primary goal, everything else is secondary.
 
 The most important rule is to keep modules and code blocks simple and purposeful: Each module, class, function, block or call should have a single well-defined (and commented) purpose. DO NOT re-create the wheel, DO NOT add custom code when a common package will suffice. Add only the MINIMAL amount of code to implement the modules documented purpose.
@@ -165,7 +171,7 @@ The most important rule is to keep modules and code blocks simple and purposeful
 - DO NOT add any functionality outside the defined scope of a given module
 
 
-### Testing
+#### Testing
 - Use pytest: Keep tests organized by module relative to the functionality they test
 - Add fixtures when multiple tests require them and define them at the top of the test module or in a conftest file when shared between modules.
 - Define tests with the user's input prior to implementing a new feature (TDD)

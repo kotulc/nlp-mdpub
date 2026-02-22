@@ -1,14 +1,30 @@
+"""Databse table definitions for documents, sections, content blocks, etc."""
+
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List, Dict, Any
 from uuid import UUID, uuid4
 
 from sqlmodel import SQLModel, Field, Relationship
-from sqlalchemy import Column, DateTime, Text, String
+from sqlalchemy import Column, DateTime, JSON, Text, String, UniqueConstraint
 from sqlalchemy.orm import Mapped
 
 from datetime import datetime
 from sqlmodel import Field, SQLModel
+
+
+class Document(SQLModel, table=True):
+    """A markdown document and the originating content source of truth"""
+    __tablename__ = "documents"
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    slug: str = Field(..., index=True, unique=True, nullable=False)
+    markdown: str = Field(..., sa_column=Column(Text, nullable=False))
+    hash: str = Field(..., sa_column=Column(String(64), nullable=False))
+    frontmatter: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON, nullable=True))
+    created_at: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime(timezone=False), nullable=False))
+    updated_at: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime(timezone=False), nullable=False))
+    sections: Mapped[List["Section"]] = Relationship(back_populates="document")
+    meta: Mapped[List["DocumentMeta"]] = Relationship(back_populates="document")
 
 
 class DocumentMeta(SQLModel, table=True):
@@ -20,18 +36,41 @@ class DocumentMeta(SQLModel, table=True):
     document: Mapped[Optional["Document"]] = Relationship(back_populates="meta")
 
 
-class Document(SQLModel, table=True):
-    """A markdown document and the originating content source of truth"""
-    __tablename__ = "documents"
+class DocumentVersion(SQLModel, table=True):
+    """Immutable snapshot of a Document at a prior state."""
+    __tablename__ = "document_versions"
+    __table_args__ = (UniqueConstraint("document_id", "version_num", name="uq_docver_doc_num"),)
     id: UUID = Field(default_factory=uuid4, primary_key=True)
-    slug: str = Field(..., index=True, unique=True, nullable=False)
+    document_id: UUID = Field(..., foreign_key="documents.id", index=True, nullable=False)
+    version_num: int = Field(..., nullable=False, description="Monotonically increasing per-document version number")
     markdown: str = Field(..., sa_column=Column(Text, nullable=False))
     hash: str = Field(..., sa_column=Column(String(64), nullable=False))
-    frontmatter: Optional[Dict[str, Any]] = Field(default=None, description="Parsed document frontmatter as a JSON/dict object")
+    frontmatter: Optional[str] = Field(default=None, sa_column=Column(Text, nullable=True))
     created_at: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime(timezone=False), nullable=False))
+
+
+class SectionTag(SQLModel, table=True):
+    """Many-to-many relationship between sections and tags"""
+    __tablename__ = "section_tags"
+    section_id: UUID = Field(foreign_key="sections.id", primary_key=True)
+    tag_name: str = Field(foreign_key="tags.name", primary_key=True)
+    relevance: float = Field(..., nullable=False)
+    position: Optional[int] = Field(default=None, nullable=False)
+
+
+class Section(SQLModel, table=True):
+    """Logical grouping of content blocks within a document representing a top-level section"""
+    __tablename__ = "sections"
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    document_id: UUID = Field(foreign_key="documents.id", index=True, nullable=False)
+    hash: str = Field(..., sa_column=Column(String(64), nullable=False))
+    position: int = Field(..., description="Position of the section within the document")
+    hidden: bool = Field(default=False, nullable=False, description="Whether the section is hidden")
     updated_at: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime(timezone=False), nullable=False))
-    sections: Mapped[List["Section"]] = Relationship(back_populates="document")
-    meta: Mapped[List[DocumentMeta]] = Relationship(back_populates="document", description="Key-value pairs for computed metadata")
+    document: Mapped[Document] = Relationship(back_populates="sections")
+    blocks: Mapped[List["SectionBlock"]] = Relationship(back_populates="section")
+    metrics: Mapped[List["SectionMetric"]] = Relationship(back_populates="section")
+    tags: Mapped[List["Tag"]] = Relationship(back_populates="sections", link_model=SectionTag)
 
 
 class SectionBlockEnum(str, Enum):
@@ -67,29 +106,6 @@ class SectionMetric(SQLModel, table=True):
     value: float = Field(..., nullable=False)
     recorded_at: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime(timezone=False), nullable=False))
     section: Mapped[Optional["Section"]] = Relationship(back_populates="metrics")
-
-
-class SectionTag(SQLModel, table=True):
-    """Many-to-many relationship between sections and tags"""
-    __tablename__ = "section_tags"
-    section_id: UUID = Field(foreign_key="sections.id", primary_key=True)
-    tag_name: str = Field(foreign_key="tags.name", primary_key=True)
-    relevance: float = Field(..., nullable=False)
-    position: Optional[int] = Field(default=None, nullable=False)
-
-
-class Section(SQLModel, table=True):
-    """Logical grouping of content blocks within a document, representing a top-level section"""
-    __tablename__ = "sections"
-    id: UUID = Field(default_factory=uuid4, primary_key=True)
-    document_id: UUID = Field(foreign_key="documents.id", index=True, nullable=False)
-    hash: str = Field(..., sa_column=Column(String(64), nullable=False))
-    position: int = Field(..., description="Position of the section within the document")
-    hidden: bool = Field(default=False, nullable=False, description="Whether the section is hidden")
-    document: Mapped[Document] = Relationship(back_populates="sections")
-    blocks: Mapped[List[SectionBlock]] = Relationship(back_populates="section")
-    metrics: Mapped[List[SectionMetric]] = Relationship(back_populates="section")
-    tags: Mapped[List["Tag"]] = Relationship(back_populates="sections", link_model=SectionTag)
 
 
 class Tag(SQLModel, table=True):
