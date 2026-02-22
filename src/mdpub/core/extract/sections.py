@@ -2,7 +2,7 @@
 
 
 def _heading_level(token) -> int | None:
-    """Return heading level (1-6) for heading_open tokens, else None."""
+    """Return heading level (1-6) for heading_open tokens else None."""
     if token.type == 'heading_open' and len(token.tag) == 2 and token.tag[0] == 'h':
         return int(token.tag[1])
     return None
