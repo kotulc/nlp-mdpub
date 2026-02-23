@@ -1,20 +1,11 @@
 """Database engine, session, and schema initialization"""
 
-import os
 from sqlmodel import Session, SQLModel, create_engine
 
 
-SQLITE_DEFAULT = "sqlite:///mdpub.db"
-
-
-def get_url(explicit: str | None = None) -> str:
-    """Resolve DB URL from arg, MDPUB_DB_URL env var, or SQLite default."""
-    return explicit or os.getenv("MDPUB_DB_URL") or SQLITE_DEFAULT
-
-
-def make_engine(url: str | None = None):
-    """Create SQLAlchemy engine. Resolves URL via get_url() if not provided."""
-    return create_engine(get_url(url))
+def make_engine(url: str):
+    """Create SQLAlchemy engine for the given URL."""
+    return create_engine(url)
 
 
 def init_db(engine) -> None:

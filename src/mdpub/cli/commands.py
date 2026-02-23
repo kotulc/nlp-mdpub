@@ -7,7 +7,7 @@ import typer
 from sqlmodel import Session, SQLModel
 
 from mdpub.config import load_config
-from mdpub.core.pipeline import STAGING, run_commit, run_export, run_extract
+from mdpub.core.pipeline import run_commit, run_export, run_extract
 from mdpub.crud.database import init_db, make_engine
 from mdpub.crud.documents import (
     get_all_documents,
@@ -19,23 +19,23 @@ from mdpub.crud.documents import (
 
 def build_cmd(
     path: Annotated[str, typer.Argument(help="File or directory to process")],
-    config: Annotated[Optional[str], typer.Option("--config", help="Path to config.yaml")] = None,
-    db_url: Annotated[Optional[str], typer.Option("--db-url", help="Database URL override")] = None,
     out: Annotated[Optional[str], typer.Option("--out-dir", help="Output directory override")] = None,
+    staging: Annotated[Optional[str], typer.Option("--staging-dir", help="Staging directory override")] = None,
     ):
     """Run the full pipeline: extract -> commit -> export."""
-    settings = load_config(config_path=config, overrides={"db_url": db_url, "output_dir": out})
+    settings = load_config(overrides={"output_dir": out, "staging_dir": staging})
     engine = make_engine(settings.db_url)
     init_db(engine)
+    staging_dir = Path(settings.staging_dir)
 
     # --- extract ---
-    extracted = run_extract(path, settings.parser_config, settings.max_nesting)
+    extracted = run_extract(path, settings.parser_config, settings.max_nesting, staging_dir)
     for src, out_file in extracted:
         typer.echo(f"  {src} -> {out_file}")
-    typer.echo(f"Extracted {len(extracted)} document(s) to {STAGING}/")
+    typer.echo(f"Extracted {len(extracted)} document(s) to {staging_dir}/")
 
     # --- commit ---
-    counts, changes = run_commit(engine, settings.max_versions)
+    counts, changes = run_commit(engine, settings.max_versions, staging_dir)
     for status, slug in changes:
         typer.echo(f"  {status}: {slug}")
     typer.echo(
@@ -55,12 +55,9 @@ def build_cmd(
     typer.echo(f"Exported {len(results)} document(s) to {output_dir}/")
 
 
-def list_cmd(
-    config: Annotated[Optional[str], typer.Option("--config", help="Path to config.yaml")] = None,
-    db_url: Annotated[Optional[str], typer.Option("--db-url", help="Database URL override")] = None,
-    ):
+def list_cmd():
     """List top-level directories (collections) that contain documents in the database."""
-    settings = load_config(config_path=config, overrides={"db_url": db_url})
+    settings = load_config()
     engine = make_engine(settings.db_url)
     init_db(engine)
     with Session(engine) as session:
@@ -73,12 +70,10 @@ def list_cmd(
 
 
 def init_cmd(
-    config: Annotated[Optional[str], typer.Option("--config", help="Path to config.yaml")] = None,
-    db_url: Annotated[Optional[str], typer.Option("--db-url", help="Database URL override")] = None,
     reset: Annotated[bool, typer.Option("--reset", help="Drop and recreate all tables")] = False,
     ):
     """Initialize database schema. Use --reset to clear existing data."""
-    settings = load_config(config_path=config, overrides={"db_url": db_url})
+    settings = load_config()
     engine = make_engine(settings.db_url)
     if reset:
         SQLModel.metadata.drop_all(engine)
@@ -89,27 +84,27 @@ def init_cmd(
 
 def extract_cmd(
     path: Annotated[str, typer.Argument(help="File or directory to extract from")],
-    config: Annotated[Optional[str], typer.Option("--config", help="Path to config.yaml")] = None,
-    db_url: Annotated[Optional[str], typer.Option("--db-url", help="Database URL override")] = None,
+    staging: Annotated[Optional[str], typer.Option("--staging-dir", help="Staging directory override")] = None,
     ):
     """Recursively extract blocks, frontmatter, and content hash."""
-    settings = load_config(config_path=config, overrides={"db_url": db_url})
-    results = run_extract(path, settings.parser_config, settings.max_nesting)
+    settings = load_config(overrides={"staging_dir": staging})
+    staging_dir = Path(settings.staging_dir)
+    results = run_extract(path, settings.parser_config, settings.max_nesting, staging_dir)
     for src, out_file in results:
         typer.echo(f"  {src} -> {out_file}")
-    typer.echo(f"Extracted {len(results)} document(s) to {STAGING}/")
+    typer.echo(f"Extracted {len(results)} document(s) to {staging_dir}/")
 
 
 def commit_cmd(
-    config: Annotated[Optional[str], typer.Option("--config", help="Path to config.yaml")] = None,
-    db_url: Annotated[Optional[str], typer.Option("--db-url", help="Database URL override")] = None,
+    staging: Annotated[Optional[str], typer.Option("--staging-dir", help="Staging directory override")] = None,
     ):
     """Upsert parsed document data to the database."""
-    settings = load_config(config_path=config, overrides={"db_url": db_url})
+    settings = load_config(overrides={"staging_dir": staging})
     engine = make_engine(settings.db_url)
     init_db(engine)
+    staging_dir = Path(settings.staging_dir)
 
-    counts, changes = run_commit(engine, settings.max_versions)
+    counts, changes = run_commit(engine, settings.max_versions, staging_dir)
     if not counts:
         typer.echo("Nothing staged. Run 'mdpub extract <path>' first.")
         raise typer.Exit(1)
@@ -125,14 +120,12 @@ def commit_cmd(
 
 
 def export_cmd(
-    config: Annotated[Optional[str], typer.Option("--config", help="Path to config.yaml")] = None,
-    db_url: Annotated[Optional[str], typer.Option("--db-url", help="Database URL override")] = None,
     out: Annotated[Optional[str], typer.Option("--out-dir", help="Output directory override")] = None,
     collection: Annotated[Optional[str], typer.Option("--collection", help="Export docs under this top-level directory")] = None,
     all_docs: Annotated[bool, typer.Option("--all", help="Export all documents in the database")] = False,
     ):
     """Write standardized MD/MDX + sidecar JSON to output dir."""
-    settings = load_config(config_path=config, overrides={"db_url": db_url, "output_dir": out})
+    settings = load_config(overrides={"output_dir": out})
     engine = make_engine(settings.db_url)
     init_db(engine)
     output_dir = Path(settings.output_dir)

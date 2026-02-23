@@ -1,9 +1,11 @@
 # mdpub
-A CLI pipeline for decomposing Markdown documents into structured content — persisted to a database and emitted as standardized MD/MDX + JSON for static site publishing.
+A CLI pipeline for recomposing Markdown documents into structured content — persisted to a database and emitted as standardized MD/MDX + JSON for intelligence-augmented static site publishing.  
+
+The standardized, configurable, flat section based data configuration supports a unified surface to present to AI-powered static templating engines such as the `nlp-stemplate` natural language powered static templating tool, creating a simple plug-and-play data interface layer.
 
 General Workflow:
 ```
-MD/MDX → parse → extract(configs) → commit → export(configs) → structured MD/MDX + JSON
+MD/MDX → parse + extract(configs) → commit → export(configs) → structured MD/MDX + JSON
 ```
 
 
@@ -12,9 +14,9 @@ MD/MDX → parse → extract(configs) → commit → export(configs) → structu
 - **Rich block extraction** — headings, paragraphs, code fences, lists, images, tables
 - **Incremental updates** — SHA-256 content hashing skips unchanged documents
 - **Versioning & diffs** — tracks document history; surfaces unified diffs between versions
-- **Dual output** — emits standardized MD/MDX files and sidecar JSON metadata alongside DB persistence
-- **Composable CLI** — pipeline steps (parse, store, emit) can be run independently or chained
-- **Pluggable storage** — SQLite by default; PostgreSQL via environment variable
+- **Dual output** — exports standardized MD/MDX files and sidecar JSON metadata alongside DB persistence
+- **Composable CLI** — pipeline steps (extract, commit, export) can be run independently or chained
+- **Pluggable storage** — supports standard persistance layers: SQLite (default) or PostgreSQL
 
 
 ## Pipeline
@@ -33,14 +35,21 @@ mdpub export          # write standardized MD/MDX + sidecar JSON to output dir
 
 
 ## Configuration
-The standardized structure of the returned MD/MDX documents is fully configurable either via CLI options or by modifying the default `config.yaml` file. Options and flags supplied via the CLI will override all local configurations stored in `config.yaml`.
+All settings follow a four-tier priority (highest to lowest):
+**CLI option → `MDPUB_DB_URL` env var → `config.yaml` → built-in default**
 
-`config.yaml` contains the following app-level settings:
-- db_url (str): The connection string to the external databse instance
-- max_nesting (int): The maximum nesting level before child content is flattened
-- output_dir (str): The output directory to export results to
-- output_format (str): Desired markdown output format, "md" or "mdx" 
-- parser_config (str): MarkdownIt parser configuration preset name, defaults to "gfm-like"
+Place a `config.yaml` in your working directory to set project-wide defaults. Set `MDPUB_DB_URL`
+in your shell environment to override the database for a session. Pass CLI options for per-run overrides.
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `db_url` | `sqlite:///mdpub.db` | SQLAlchemy connection string |
+| `max_nesting` | `6` | Max heading depth before child content is flattened |
+| `max_versions` | `10` | Max stored versions per document; `0` disables versioning |
+| `output_dir` | `dist` | Output directory for exported MD/MDX + JSON files |
+| `output_format` | `mdx` | Markdown output format: `md` or `mdx` |
+| `parser_config` | `gfm-like` | MarkdownIt parser preset name |
+| `staging_dir` | `.mdpub/staging` | Staging directory for intermediate extracted JSON |
 
 
 ## Quickstart
@@ -62,7 +71,7 @@ export MDPUB_DB_URL="postgresql+psycopg://user:pass@localhost/mdpub"
 ### Run the pipeline
 ```bash
 # Single command:
-mdpub build docs/ --dir dist/
+mdpub build docs/ --out-dir dist/
 
 # Or in stages:
 mdpub init
@@ -83,10 +92,12 @@ For each document, `export` produces:
 | `<slug>.json` | Full metadata: frontmatter, blocks, metrics, version history |
 
 
-### Persistance
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MDPUB_DB_URL` | `sqlite:///mdpub.db` | SQLAlchemy database URL |
+### Database
+Set `MDPUB_DB_URL` to switch databases without editing `config.yaml`. It takes precedence
+over any `db_url` set in `config.yaml`:
+```bash
+export MDPUB_DB_URL="postgresql+psycopg://user:pass@localhost/mdpub"
+```
 
 
 ## Architecture

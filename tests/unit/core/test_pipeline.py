@@ -7,9 +7,9 @@ import pytest
 from sqlalchemy import create_engine
 from sqlmodel import SQLModel, Session
 
-from mdpub.core.pipeline import STAGING, run_commit, run_export, run_extract
+from mdpub.core.pipeline import run_commit, run_export, run_extract
 from mdpub.core.utils.hashing import sha256
-from mdpub.crud.models import Document, SectionBlockEnum
+from mdpub.crud.models import Document
 
 
 @pytest.fixture(name="engine")
@@ -27,25 +27,30 @@ def session_fixture(engine):
         yield s
 
 
+@pytest.fixture(name="staging_dir")
+def staging_dir_fixture(tmp_path):
+    return tmp_path / ".mdpub" / "staging"
+
+
 @pytest.fixture(autouse=True)
 def chdir_tmp(tmp_path, monkeypatch):
-    """Run each test from a clean tmp directory so STAGING is isolated."""
+    """Run each test from a clean tmp directory so relative paths are isolated."""
     monkeypatch.chdir(tmp_path)
 
 
 # --- run_extract ---
 
-def test_run_extract_writes_staging(tmp_path):
-    """run_extract writes one JSON file per parsed document to STAGING."""
+def test_run_extract_writes_staging(tmp_path, staging_dir):
+    """run_extract writes one JSON file per parsed document to staging_dir."""
     (tmp_path / "hello.md").write_text("# Hello\n\nWorld\n")
-    run_extract("hello.md", "gfm-like", 2)
-    assert any(STAGING.glob("*.json"))
+    run_extract("hello.md", "gfm-like", 2, staging_dir)
+    assert any(staging_dir.glob("*.json"))
 
 
-def test_run_extract_returns_pairs(tmp_path):
+def test_run_extract_returns_pairs(tmp_path, staging_dir):
     """run_extract returns one (source_path, staging_file) pair per document."""
     (tmp_path / "hello.md").write_text("# Hello\n\nWorld\n")
-    results = run_extract("hello.md", "gfm-like", 2)
+    results = run_extract("hello.md", "gfm-like", 2, staging_dir)
     assert len(results) == 1
     src, out_file = results[0]
     assert "hello" in str(src)
@@ -53,10 +58,10 @@ def test_run_extract_returns_pairs(tmp_path):
     assert out_file.exists()
 
 
-def test_run_extract_staging_json_is_valid(tmp_path):
+def test_run_extract_staging_json_is_valid(tmp_path, staging_dir):
     """Staging files written by run_extract are valid JSON with expected keys."""
     (tmp_path / "doc.md").write_text("# Doc\n\nContent.\n")
-    results = run_extract("doc.md", "gfm-like", 2)
+    results = run_extract("doc.md", "gfm-like", 2, staging_dir)
     _, out_file = results[0]
     data = json.loads(out_file.read_text())
     assert "slug" in data
@@ -65,29 +70,29 @@ def test_run_extract_staging_json_is_valid(tmp_path):
 
 # --- run_commit ---
 
-def test_run_commit_returns_empty_on_no_staging(engine):
+def test_run_commit_returns_empty_on_no_staging(engine, staging_dir):
     """run_commit returns ({}, []) when no staging files exist."""
-    counts, changes = run_commit(engine, max_versions=10)
+    counts, changes = run_commit(engine, max_versions=10, staging_dir=staging_dir)
     assert counts == {}
     assert changes == []
 
 
-def test_run_commit_creates_docs(tmp_path, engine):
+def test_run_commit_creates_docs(tmp_path, engine, staging_dir):
     """run_commit upserts staged docs and returns correct counts."""
     (tmp_path / "note.md").write_text("# Note\n\nBody.\n")
-    run_extract("note.md", "gfm-like", 2)
-    counts, changes = run_commit(engine, max_versions=10)
+    run_extract("note.md", "gfm-like", 2, staging_dir)
+    counts, changes = run_commit(engine, max_versions=10, staging_dir=staging_dir)
     assert counts["created"] == 1
     assert counts["updated"] == 0
     assert any(status == "created" for status, _ in changes)
 
 
-def test_run_commit_unchanged_on_rerun(tmp_path, engine):
+def test_run_commit_unchanged_on_rerun(tmp_path, engine, staging_dir):
     """run_commit returns unchanged status when doc content has not changed."""
     (tmp_path / "note.md").write_text("# Note\n\nBody.\n")
-    run_extract("note.md", "gfm-like", 2)
-    run_commit(engine, max_versions=10)
-    counts, changes = run_commit(engine, max_versions=10)
+    run_extract("note.md", "gfm-like", 2, staging_dir)
+    run_commit(engine, max_versions=10, staging_dir=staging_dir)
+    counts, changes = run_commit(engine, max_versions=10, staging_dir=staging_dir)
     assert counts["unchanged"] == 1
     assert changes == []
 
