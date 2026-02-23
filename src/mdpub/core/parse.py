@@ -25,7 +25,13 @@ def _strip_frontmatter(text: str) -> tuple[dict[str, Any], str]:
     """Return (frontmatter_dict, body) with YAML header removed."""
     m = FRONTMATTER_RE.match(text)
     if m:
-        return yaml.safe_load(m.group(1)) or {}, text[m.end():]
+        try:
+            fm = yaml.safe_load(m.group(1)) or {}
+        except yaml.YAMLError as e:
+            raise ValueError(f"Invalid YAML frontmatter: {e}") from e
+        if not isinstance(fm, dict):
+            raise ValueError(f"Invalid YAML frontmatter: expected a mapping, got {type(fm).__name__}")
+        return fm, text[m.end():]
     return {}, text
 
 

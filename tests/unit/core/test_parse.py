@@ -23,6 +23,26 @@ def test_strip_frontmatter_no_frontmatter():
     assert body == text
 
 
+def test_strip_frontmatter_scalar_frontmatter():
+    """_strip_frontmatter raises ValueError when YAML parses to a non-dict scalar."""
+    with pytest.raises(ValueError, match="Invalid YAML frontmatter"):
+        _strip_frontmatter("---\nis this even a key?\n---\n# Body\n")
+
+
+def test_strip_frontmatter_malformed_key():
+    """_strip_frontmatter raises ValueError for YAML missing colon separator."""
+    with pytest.raises(ValueError, match="Invalid YAML frontmatter"):
+        _strip_frontmatter("---\nsome-incorrectly formatted: ok\nis this even a key?\n---\n# Body\n")
+
+
+def test_parse_file_invalid_frontmatter_raises(tmp_path):
+    """parse_file raises ValueError when frontmatter is invalid YAML."""
+    f = tmp_path / "bad.md"
+    f.write_text("---\nis this even a key?\n---\n# Body\n")
+    with pytest.raises(ValueError, match="Invalid YAML frontmatter"):
+        parse_file(f)
+
+
 def test_discover_files_single(tmp_path):
     """discover_files returns a list with one file when given a file path."""
     f = tmp_path / "doc.md"

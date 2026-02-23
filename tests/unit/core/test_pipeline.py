@@ -1,5 +1,6 @@
 """Unit tests for core/pipeline.py"""
 
+import datetime
 import json
 from pathlib import Path
 
@@ -66,6 +67,35 @@ def test_run_extract_staging_json_is_valid(tmp_path, staging_dir):
     data = json.loads(out_file.read_text())
     assert "slug" in data
     assert "sections" in data
+
+
+@pytest.mark.parametrize("frontmatter,field,expected", [
+    ("date: 2026-01-15\n",     "date",     "2026-01-15"),
+    ("updated: 2026-01-15T10:30:00\n", "updated", "2026-01-15T10:30:00"),
+])
+def test_run_extract_serializes_date_frontmatter(tmp_path, staging_dir, frontmatter, field, expected):
+    """run_extract converts date/datetime frontmatter values to ISO strings in staging JSON."""
+    (tmp_path / "post.md").write_text(f"---\n{frontmatter}---\n\n# Post\n\nBody.\n")
+    results = run_extract("post.md", "gfm-like", 2, staging_dir)
+    _, out_file = results[0]
+    data = json.loads(out_file.read_text())
+    assert data["frontmatter"][field] == expected
+
+
+def test_run_extract_raises_with_file_context_on_error(tmp_path, staging_dir, monkeypatch):
+    """run_extract wraps per-document failures with the source file path."""
+    (tmp_path / "bad.md").write_text("# Bad\n\nContent.\n")
+    from mdpub.core import pipeline
+    monkeypatch.setattr(pipeline, "extract_doc", lambda *a: (_ for _ in ()).throw(ValueError("oops")))
+    with pytest.raises(RuntimeError, match="bad.md"):
+        run_extract("bad.md", "gfm-like", 2, staging_dir)
+
+
+def test_run_extract_raises_on_invalid_frontmatter(tmp_path, staging_dir):
+    """run_extract wraps YAML parse errors with the source file path."""
+    (tmp_path / "bad.md").write_text("---\nis this even a key?\n---\n# Body\n")
+    with pytest.raises(RuntimeError, match="bad.md"):
+        run_extract("bad.md", "gfm-like", 2, staging_dir)
 
 
 # --- run_commit ---

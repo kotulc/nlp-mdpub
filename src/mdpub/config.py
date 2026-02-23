@@ -26,7 +26,10 @@ def load_config(overrides: dict[str, Any] = None) -> Settings:
     """Load Settings: config.yaml, then MDPUB_DB_URL env var, then non-None CLI overrides."""
     data: dict[str, Any] = {}
     if Path(CONFIG_FILE).exists():
-        data = yaml.safe_load(Path(CONFIG_FILE).read_text()) or {}
+        try:
+            data = yaml.safe_load(Path(CONFIG_FILE).read_text()) or {}
+        except yaml.YAMLError as e:
+            raise ValueError(f"Invalid {CONFIG_FILE}: {e}") from e
     if db_url := os.getenv("MDPUB_DB_URL"):
         data["db_url"] = db_url
     if overrides:

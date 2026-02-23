@@ -1,7 +1,7 @@
 [project]
 name = "mdpub"
 version = "0.1.0"
-description = "A CLI-first app to decompose markdown documents into a structured format"
+description = "A CLI-first app to recompose markdown documents"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }

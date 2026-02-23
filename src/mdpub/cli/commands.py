@@ -17,25 +17,42 @@ from mdpub.crud.documents import (
 )
 
 
+def _fail(msg: str, cause: Exception = None) -> None:
+    """Print a user-friendly error to stderr and exit 1."""
+    typer.echo(f"Error: {msg}", err=True)
+    if cause:
+        typer.echo(f"  {cause}", err=True)
+    raise typer.Exit(1)
+
+
 def build_cmd(
     path: Annotated[str, typer.Argument(help="File or directory to process")],
     out: Annotated[Optional[str], typer.Option("--out-dir", help="Output directory override")] = None,
     staging: Annotated[Optional[str], typer.Option("--staging-dir", help="Staging directory override")] = None,
     ):
     """Run the full pipeline: extract -> commit -> export."""
-    settings = load_config(overrides={"output_dir": out, "staging_dir": staging})
+    try:
+        settings = load_config(overrides={"output_dir": out, "staging_dir": staging})
+    except ValueError as e:
+        _fail(str(e))
     engine = make_engine(settings.db_url)
     init_db(engine)
     staging_dir = Path(settings.staging_dir)
 
     # --- extract ---
-    extracted = run_extract(path, settings.parser_config, settings.max_nesting, staging_dir)
+    try:
+        extracted = run_extract(path, settings.parser_config, settings.max_nesting, staging_dir)
+    except RuntimeError as e:
+        _fail(str(e))
     for src, out_file in extracted:
         typer.echo(f"  {src} -> {out_file}")
     typer.echo(f"Extracted {len(extracted)} document(s) to {staging_dir}/")
 
     # --- commit ---
-    counts, changes = run_commit(engine, settings.max_versions, staging_dir)
+    try:
+        counts, changes = run_commit(engine, settings.max_versions, staging_dir)
+    except Exception as e:
+        _fail("Commit failed", e)
     for status, slug in changes:
         typer.echo(f"  {status}: {slug}")
     typer.echo(
@@ -47,9 +64,12 @@ def build_cmd(
 
     # --- export ---
     output_dir = Path(settings.output_dir)
-    with Session(engine) as session:
-        exported = get_last_committed(session)
-        results = run_export(session, exported, output_dir, settings.output_format)
+    try:
+        with Session(engine) as session:
+            exported = get_last_committed(session)
+            results = run_export(session, exported, output_dir, settings.output_format)
+    except Exception as e:
+        _fail("Export failed", e)
     for slug, mdx_path in results:
         typer.echo(f"  {slug} -> {mdx_path}")
     typer.echo(f"Exported {len(results)} document(s) to {output_dir}/")
@@ -57,7 +77,10 @@ def build_cmd(
 
 def list_cmd():
     """List top-level directories (collections) that contain documents in the database."""
-    settings = load_config()
+    try:
+        settings = load_config()
+    except ValueError as e:
+        _fail(str(e))
     engine = make_engine(settings.db_url)
     init_db(engine)
     with Session(engine) as session:
@@ -73,7 +96,10 @@ def init_cmd(
     reset: Annotated[bool, typer.Option("--reset", help="Drop and recreate all tables")] = False,
     ):
     """Initialize database schema. Use --reset to clear existing data."""
-    settings = load_config()
+    try:
+        settings = load_config()
+    except ValueError as e:
+        _fail(str(e))
     engine = make_engine(settings.db_url)
     if reset:
         SQLModel.metadata.drop_all(engine)
@@ -87,9 +113,15 @@ def extract_cmd(
     staging: Annotated[Optional[str], typer.Option("--staging-dir", help="Staging directory override")] = None,
     ):
     """Recursively extract blocks, frontmatter, and content hash."""
-    settings = load_config(overrides={"staging_dir": staging})
+    try:
+        settings = load_config(overrides={"staging_dir": staging})
+    except ValueError as e:
+        _fail(str(e))
     staging_dir = Path(settings.staging_dir)
-    results = run_extract(path, settings.parser_config, settings.max_nesting, staging_dir)
+    try:
+        results = run_extract(path, settings.parser_config, settings.max_nesting, staging_dir)
+    except RuntimeError as e:
+        _fail(str(e))
     for src, out_file in results:
         typer.echo(f"  {src} -> {out_file}")
     typer.echo(f"Extracted {len(results)} document(s) to {staging_dir}/")
@@ -99,12 +131,18 @@ def commit_cmd(
     staging: Annotated[Optional[str], typer.Option("--staging-dir", help="Staging directory override")] = None,
     ):
     """Upsert parsed document data to the database."""
-    settings = load_config(overrides={"staging_dir": staging})
+    try:
+        settings = load_config(overrides={"staging_dir": staging})
+    except ValueError as e:
+        _fail(str(e))
     engine = make_engine(settings.db_url)
     init_db(engine)
     staging_dir = Path(settings.staging_dir)
 
-    counts, changes = run_commit(engine, settings.max_versions, staging_dir)
+    try:
+        counts, changes = run_commit(engine, settings.max_versions, staging_dir)
+    except Exception as e:
+        _fail("Commit failed", e)
     if not counts:
         typer.echo("Nothing staged. Run 'mdpub extract <path>' first.")
         raise typer.Exit(1)
@@ -125,27 +163,35 @@ def export_cmd(
     all_docs: Annotated[bool, typer.Option("--all", help="Export all documents in the database")] = False,
     ):
     """Write standardized MD/MDX + sidecar JSON to output dir."""
-    settings = load_config(overrides={"output_dir": out})
+    try:
+        settings = load_config(overrides={"output_dir": out})
+    except ValueError as e:
+        _fail(str(e))
     engine = make_engine(settings.db_url)
     init_db(engine)
     output_dir = Path(settings.output_dir)
 
-    with Session(engine) as session:
-        if all_docs:
-            docs = get_all_documents(session)
-            scope = "all"
-        elif collection:
-            docs = get_by_collection(session, collection)
-            scope = f"collection '{collection}'"
-        else:
-            docs = get_last_committed(session)
-            scope = "last commit"
+    try:
+        with Session(engine) as session:
+            if all_docs:
+                docs = get_all_documents(session)
+                scope = "all"
+            elif collection:
+                docs = get_by_collection(session, collection)
+                scope = f"collection '{collection}'"
+            else:
+                docs = get_last_committed(session)
+                scope = "last commit"
 
-        if not docs:
-            typer.echo(f"No documents found for scope: {scope}.")
-            raise typer.Exit(1)
+            if not docs:
+                typer.echo(f"No documents found for scope: {scope}.")
+                raise typer.Exit(1)
 
-        results = run_export(session, docs, output_dir, settings.output_format)
+            results = run_export(session, docs, output_dir, settings.output_format)
+    except typer.Exit:
+        raise
+    except Exception as e:
+        _fail("Export failed", e)
 
     for slug, mdx_path in results:
         typer.echo(f"  {slug} -> {mdx_path}")

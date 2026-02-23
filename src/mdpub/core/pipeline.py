@@ -2,14 +2,14 @@
 
 import dataclasses
 import json
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 from sqlmodel import Session
 
 from mdpub.core.export import write_doc
 from mdpub.core.extract.extract import extract_doc
-from mdpub.core.parse import parse_dir
+from mdpub.core.parse import discover_files, parse_file
 from mdpub.crud.documents import commit_doc
 from mdpub.crud.models import SectionBlockEnum
 
@@ -24,16 +24,21 @@ def run_extract(
     def _serial(obj):
         if isinstance(obj, SectionBlockEnum):
             return obj.value
+        if isinstance(obj, date):  # catches date and datetime (datetime subclasses date)
+            return obj.isoformat()
         raise TypeError(type(obj))
 
     staging_dir.mkdir(parents=True, exist_ok=True)
-    docs = parse_dir(Path(path), parser_config)
     results = []
-    for parsed in docs:
-        extracted = extract_doc(parsed, max_nesting)
-        out_file = staging_dir / f"{extracted.slug}.json"
-        out_file.write_text(json.dumps(dataclasses.asdict(extracted), default=_serial, indent=2))
-        results.append((parsed.path, out_file))
+    for p in discover_files(Path(path)):
+        try:
+            parsed = parse_file(p, parser_config)
+            extracted = extract_doc(parsed, max_nesting)
+            out_file = staging_dir / f"{extracted.slug}.json"
+            out_file.write_text(json.dumps(dataclasses.asdict(extracted), default=_serial, indent=2))
+            results.append((p, out_file))
+        except Exception as e:
+            raise RuntimeError(f"Failed to extract {p}: {e}") from e
     return results
 
 

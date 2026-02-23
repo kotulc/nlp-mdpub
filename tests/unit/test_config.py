@@ -1,5 +1,7 @@
 """Unit tests for config.py"""
 
+import pytest
+
 from mdpub.config import load_config
 
 
@@ -31,3 +33,11 @@ def test_load_config_defaults_to_sqlite(monkeypatch):
     monkeypatch.delenv("MDPUB_DB_URL", raising=False)
     settings = load_config()
     assert settings.db_url == "sqlite:///mdpub.db"
+
+
+def test_load_config_invalid_yaml(tmp_path, monkeypatch):
+    """load_config raises ValueError when config.yaml contains invalid YAML."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.yaml").write_text("key: [unclosed\n")
+    with pytest.raises(ValueError, match="Invalid config.yaml"):
+        load_config()
