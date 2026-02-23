@@ -77,13 +77,16 @@ class Section(SQLModel, table=True):
 
 class SectionBlockEnum(str, Enum):
     """Restrict the types of content blocks to a predefined set of elements"""
-    content = "content"
-    heading = "heading"
+    content   = "content"    # catch-all for unknown block types
+    heading   = "heading"
     paragraph = "paragraph"
-    list = "list"
-    table = "table"
-    figure = "figure"
-    footer = "footer"
+    list      = "list"
+    table     = "table"
+    figure    = "figure"     # image-only paragraph
+    footer    = "footer"
+    code      = "code"       # fence / indented code block
+    quote     = "quote"      # blockquote
+    html      = "html"       # raw HTML block
 
 
 class SectionBlock(SQLModel, table=True):

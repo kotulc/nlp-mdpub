@@ -73,14 +73,14 @@ export MDPUB_DB_URL="postgresql+psycopg://user:pass@localhost/mdpub"
 # Single command:
 mdpub build docs/ --out-dir dist/
 
-# Or in stages:
+# Run in stages:
 mdpub init
 mdpub extract docs/
 mdpub commit
+mdpub list                          # list available collections
 mdpub export                        # export documents from the last commit
 mdpub export --collection docs      # export all documents under docs/
 mdpub export --all --out-dir dist/  # export every document to dist/
-mdpub list                          # list available collections
 ```
 
 ### Output
@@ -88,7 +88,7 @@ For each document, `export` produces:
 
 | File | Description |
 |------|-------------|
-| `<slug>.mdx` | Standardized MDX with merged frontmatter (slug, doc_id, hash, tags) |
+| `<slug>.md/mdx` | Standardized MD/MDX with merged frontmatter (slug, doc_id, hash, tags) |
 | `<slug>.json` | Full metadata: frontmatter, blocks, metrics, version history |
 
 

@@ -39,10 +39,10 @@ def test_list_block(parser):
 
 
 def test_fence_block(parser):
-    """Fenced code block maps to SectionBlockEnum.content."""
+    """Fenced code block maps to SectionBlockEnum.code."""
     blocks = _parse_blocks(parser, "```python\nprint('x')\n```\n")
     assert len(blocks) == 1
-    assert blocks[0].type == SectionBlockEnum.content
+    assert blocks[0].type == SectionBlockEnum.code
 
 
 def test_footer_after_hr(parser):
@@ -66,3 +66,29 @@ def test_block_positions_increment(parser):
     positions = [b.position for b in blocks]
     assert positions == sorted(positions)
     assert len(set(positions)) == len(positions)
+
+
+@pytest.mark.parametrize("md,expected", [
+    ("```python\nprint('x')\n```\n", SectionBlockEnum.code),
+    ("    indented code\n",          SectionBlockEnum.code),
+    ("> A blockquote.\n",            SectionBlockEnum.quote),
+    ("<div>raw html</div>\n",        SectionBlockEnum.html),
+])
+def test_block_type_mapping(parser, md, expected):
+    """Each markdown construct maps to its correct SectionBlockEnum type."""
+    blocks = _parse_blocks(parser, md)
+    assert any(b.type == expected for b in blocks)
+
+
+def test_figure_image_only_paragraph(parser):
+    """A paragraph containing only an image maps to SectionBlockEnum.figure."""
+    blocks = _parse_blocks(parser, "![alt](photo.png)\n")
+    assert len(blocks) == 1
+    assert blocks[0].type == SectionBlockEnum.figure
+
+
+def test_paragraph_with_text_and_image(parser):
+    """A paragraph mixing text and image stays as SectionBlockEnum.paragraph."""
+    blocks = _parse_blocks(parser, "See this: ![alt](photo.png)\n")
+    assert any(b.type == SectionBlockEnum.paragraph for b in blocks)
+    assert not any(b.type == SectionBlockEnum.figure for b in blocks)
