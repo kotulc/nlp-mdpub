@@ -6,7 +6,7 @@ from typing import Annotated, Optional
 import typer
 from sqlmodel import Session, SQLModel
 
-from mdpub.config import load_config
+from mdpub.config import Settings, load_config
 from mdpub.core.pipeline import run_commit, run_export, run_extract
 from mdpub.crud.database import init_db, make_engine
 from mdpub.crud.documents import (
@@ -25,34 +25,16 @@ def _fail(msg: str, cause: Exception = None) -> None:
     raise typer.Exit(1)
 
 
-def build_cmd(
-    path: Annotated[str, typer.Argument(help="File or directory to process")],
-    out: Annotated[Optional[str], typer.Option("--out-dir", help="Output directory override")] = None,
-    staging: Annotated[Optional[str], typer.Option("--staging-dir", help="Staging directory override")] = None,
-    ):
-    """Run the full pipeline: extract -> commit -> export."""
+def _settings(overrides: dict = None) -> Settings:
+    """Load config with standard CLI error handling."""
     try:
-        settings = load_config(overrides={"output_dir": out, "staging_dir": staging})
+        return load_config(overrides=overrides)
     except ValueError as e:
         _fail(str(e))
-    engine = make_engine(settings.db_url)
-    init_db(engine)
-    staging_dir = Path(settings.staging_dir)
 
-    # --- extract ---
-    try:
-        extracted = run_extract(path, settings.parser_config, settings.max_nesting, staging_dir)
-    except RuntimeError as e:
-        _fail(str(e))
-    for src, out_file in extracted:
-        typer.echo(f"  {src} -> {out_file}")
-    typer.echo(f"Extracted {len(extracted)} document(s) to {staging_dir}/")
 
-    # --- commit ---
-    try:
-        counts, changes = run_commit(engine, settings.max_versions, staging_dir)
-    except Exception as e:
-        _fail("Commit failed", e)
+def _echo_commit(counts: dict, changes: list) -> None:
+    """Print per-doc commit status and a summary line."""
     for status, slug in changes:
         typer.echo(f"  {status}: {slug}")
     typer.echo(
@@ -61,6 +43,34 @@ def build_cmd(
         f"{counts['updated']} updated, "
         f"{counts['unchanged']} unchanged"
     )
+
+
+def build_cmd(
+    path: Annotated[str, typer.Argument(help="File or directory to process")],
+    out: Annotated[Optional[str], typer.Option("--out-dir", help="Output directory override")] = None,
+    staging: Annotated[Optional[str], typer.Option("--staging-dir", help="Staging directory override")] = None,
+    ):
+    """Run the full pipeline: extract -> commit -> export."""
+    settings = _settings(overrides={"output_dir": out, "staging_dir": staging})
+    engine = make_engine(settings.db_url)
+    init_db(engine)
+    staging_dir = Path(settings.staging_dir)
+
+    # --- extract ---
+    try:
+        extracted = run_extract(path, settings.parser_config, staging_dir)
+    except RuntimeError as e:
+        _fail(str(e))
+    for src, out_file in extracted:
+        typer.echo(f"  {src} -> {out_file}")
+    typer.echo(f"Extracted {len(extracted)} document(s) to {staging_dir}/")
+
+    # --- commit ---
+    try:
+        counts, changes = run_commit(engine, settings.max_versions, settings.max_nesting, staging_dir)
+    except Exception as e:
+        _fail("Commit failed", e)
+    _echo_commit(counts, changes)
 
     # --- export ---
     output_dir = Path(settings.output_dir)
@@ -77,10 +87,7 @@ def build_cmd(
 
 def list_cmd():
     """List top-level directories (collections) that contain documents in the database."""
-    try:
-        settings = load_config()
-    except ValueError as e:
-        _fail(str(e))
+    settings = _settings()
     engine = make_engine(settings.db_url)
     init_db(engine)
     with Session(engine) as session:
@@ -96,10 +103,7 @@ def init_cmd(
     reset: Annotated[bool, typer.Option("--reset", help="Drop and recreate all tables")] = False,
     ):
     """Initialize database schema. Use --reset to clear existing data."""
-    try:
-        settings = load_config()
-    except ValueError as e:
-        _fail(str(e))
+    settings = _settings()
     engine = make_engine(settings.db_url)
     if reset:
         SQLModel.metadata.drop_all(engine)
@@ -113,13 +117,10 @@ def extract_cmd(
     staging: Annotated[Optional[str], typer.Option("--staging-dir", help="Staging directory override")] = None,
     ):
     """Recursively extract blocks, frontmatter, and content hash."""
-    try:
-        settings = load_config(overrides={"staging_dir": staging})
-    except ValueError as e:
-        _fail(str(e))
+    settings = _settings(overrides={"staging_dir": staging})
     staging_dir = Path(settings.staging_dir)
     try:
-        results = run_extract(path, settings.parser_config, settings.max_nesting, staging_dir)
+        results = run_extract(path, settings.parser_config, staging_dir)
     except RuntimeError as e:
         _fail(str(e))
     for src, out_file in results:
@@ -131,30 +132,20 @@ def commit_cmd(
     staging: Annotated[Optional[str], typer.Option("--staging-dir", help="Staging directory override")] = None,
     ):
     """Upsert parsed document data to the database."""
-    try:
-        settings = load_config(overrides={"staging_dir": staging})
-    except ValueError as e:
-        _fail(str(e))
+    settings = _settings(overrides={"staging_dir": staging})
     engine = make_engine(settings.db_url)
     init_db(engine)
     staging_dir = Path(settings.staging_dir)
 
     try:
-        counts, changes = run_commit(engine, settings.max_versions, staging_dir)
+        counts, changes = run_commit(engine, settings.max_versions, settings.max_nesting, staging_dir)
     except Exception as e:
         _fail("Commit failed", e)
     if not counts:
         typer.echo("Nothing staged. Run 'mdpub extract <path>' first.")
         raise typer.Exit(1)
 
-    for status, slug in changes:
-        typer.echo(f"  {status}: {slug}")
-    typer.echo(
-        f"Commit complete - "
-        f"{counts['created']} created, "
-        f"{counts['updated']} updated, "
-        f"{counts['unchanged']} unchanged"
-    )
+    _echo_commit(counts, changes)
 
 
 def export_cmd(
@@ -163,10 +154,7 @@ def export_cmd(
     all_docs: Annotated[bool, typer.Option("--all", help="Export all documents in the database")] = False,
     ):
     """Write standardized MD/MDX + sidecar JSON to output dir."""
-    try:
-        settings = load_config(overrides={"output_dir": out})
-    except ValueError as e:
-        _fail(str(e))
+    settings = _settings(overrides={"output_dir": out})
     engine = make_engine(settings.db_url)
     init_db(engine)
     output_dir = Path(settings.output_dir)
@@ -185,11 +173,11 @@ def export_cmd(
 
             if not docs:
                 typer.echo(f"No documents found for scope: {scope}.")
-                raise typer.Exit(1)
+                raise typer.Exit(1)  # intentional early exit; re-raised below
 
             results = run_export(session, docs, output_dir, settings.output_format)
     except typer.Exit:
-        raise
+        raise  # re-raise intentional no-docs exit before generic handler
     except Exception as e:
         _fail("Export failed", e)
 

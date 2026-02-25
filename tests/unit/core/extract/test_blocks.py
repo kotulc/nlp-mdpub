@@ -60,14 +60,6 @@ def test_source_slice_uses_map(parser):
     assert "## My Heading" in heading.content
 
 
-def test_block_positions_increment(parser):
-    """Block positions increment monotonically within a section."""
-    blocks = _parse_blocks(parser, "# H\n\nPara.\n\n- list\n")
-    positions = [b.position for b in blocks]
-    assert positions == sorted(positions)
-    assert len(set(positions)) == len(positions)
-
-
 @pytest.mark.parametrize("md,expected", [
     ("```python\nprint('x')\n```\n", SectionBlockEnum.code),
     ("    indented code\n",          SectionBlockEnum.code),

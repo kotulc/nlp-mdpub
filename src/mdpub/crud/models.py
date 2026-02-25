@@ -2,15 +2,12 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Optional, List, Dict, Any
+from typing import Optional, Any
 from uuid import UUID, uuid4
 
 from sqlmodel import SQLModel, Field, Relationship
 from sqlalchemy import Column, DateTime, JSON, Text, String, UniqueConstraint
 from sqlalchemy.orm import Mapped
-
-from datetime import datetime
-from sqlmodel import Field, SQLModel
 
 
 class Document(SQLModel, table=True):
@@ -20,13 +17,13 @@ class Document(SQLModel, table=True):
     slug: str = Field(..., index=True, nullable=False)
     markdown: str = Field(..., sa_column=Column(Text, nullable=False))
     hash: str = Field(..., sa_column=Column(String(64), nullable=False))
-    frontmatter: Optional[Dict[str, Any]] = Field(default=None, sa_column=Column(JSON, nullable=True))
+    frontmatter: Optional[dict[str, Any]] = Field(default=None, sa_column=Column(JSON, nullable=True))
     path: str = Field(..., sa_column=Column(Text, nullable=False, unique=True))
     created_at: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime(timezone=False), nullable=False))
     updated_at: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime(timezone=False), nullable=False))
     committed_at: Optional[datetime] = Field(default=None, sa_column=Column(DateTime(timezone=False), nullable=True))
-    sections: Mapped[List["Section"]] = Relationship(back_populates="document")
-    meta: Mapped[List["DocumentMeta"]] = Relationship(back_populates="document")
+    sections: Mapped[list["Section"]] = Relationship(back_populates="document")
+    meta: Mapped[list["DocumentMeta"]] = Relationship(back_populates="document")
 
 
 class DocumentMeta(SQLModel, table=True):
@@ -57,7 +54,7 @@ class SectionTag(SQLModel, table=True):
     section_id: UUID = Field(foreign_key="sections.id", primary_key=True)
     tag_name: str = Field(foreign_key="tags.name", primary_key=True)
     relevance: float = Field(..., nullable=False)
-    position: Optional[int] = Field(default=None, nullable=False)
+    position: Optional[int] = Field(default=None, nullable=True)
 
 
 class Section(SQLModel, table=True):
@@ -70,9 +67,9 @@ class Section(SQLModel, table=True):
     hidden: bool = Field(default=False, nullable=False, description="Whether the section is hidden")
     updated_at: datetime = Field(default_factory=datetime.now, sa_column=Column(DateTime(timezone=False), nullable=False))
     document: Mapped[Document] = Relationship(back_populates="sections")
-    blocks: Mapped[List["SectionBlock"]] = Relationship(back_populates="section")
-    metrics: Mapped[List["SectionMetric"]] = Relationship(back_populates="section")
-    tags: Mapped[List["Tag"]] = Relationship(back_populates="sections", link_model=SectionTag)
+    blocks: Mapped[list["SectionBlock"]] = Relationship(back_populates="section")
+    metrics: Mapped[list["SectionMetric"]] = Relationship(back_populates="section")
+    tags: Mapped[list["Tag"]] = Relationship(back_populates="sections", link_model=SectionTag)
 
 
 class SectionBlockEnum(str, Enum):
@@ -118,4 +115,4 @@ class Tag(SQLModel, table=True):
     __tablename__ = "tags"
     name: str = Field(primary_key=True)
     category: str = Field(..., sa_column=Column(String(64), nullable=False))
-    sections: Mapped[List[Section]] = Relationship(back_populates="tags", link_model=SectionTag)
+    sections: Mapped[list[Section]] = Relationship(back_populates="tags", link_model=SectionTag)

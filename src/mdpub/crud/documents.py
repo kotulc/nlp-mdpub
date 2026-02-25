@@ -29,6 +29,12 @@ def get_last_committed(session: Session) -> list[Document]:
     return list(session.exec(select(Document).where(Document.committed_at == max_ts)).all())
 
 
+def _collection_key(path: str) -> str:
+    """Return the top-level directory of a path, or '.' for root-level files."""
+    parts = Path(path).parts
+    return parts[0] if len(parts) > 1 else '.'
+
+
 def get_by_collection(session: Session, collection: str) -> list[Document]:
     """Return documents whose path falls under the given top-level directory.
 
@@ -36,13 +42,7 @@ def get_by_collection(session: Session, collection: str) -> list[Document]:
     Any other value matches documents whose first path component equals collection.
     """
     all_docs = session.exec(select(Document)).all()
-    result = []
-    for doc in all_docs:
-        parts = Path(doc.path).parts
-        top = parts[0] if len(parts) > 1 else '.'
-        if top == collection:
-            result.append(doc)
-    return result
+    return [doc for doc in all_docs if _collection_key(doc.path) == collection]
 
 
 def get_all_documents(session: Session) -> list[Document]:
@@ -53,15 +53,7 @@ def get_all_documents(session: Session) -> list[Document]:
 def list_collections(session: Session) -> list[str]:
     """Return sorted distinct top-level path components across all stored documents."""
     paths = session.exec(select(Document.path)).all()
-    seen: set[str] = set()
-    result: list[str] = []
-    for p in paths:
-        parts = Path(p).parts
-        top = parts[0] if len(parts) > 1 else '.'
-        if top not in seen:
-            seen.add(top)
-            result.append(top)
-    return sorted(result)
+    return sorted({_collection_key(p) for p in paths})
 
 
 def _replace_sections(session: Session, doc_id, sections: list[dict]) -> None:

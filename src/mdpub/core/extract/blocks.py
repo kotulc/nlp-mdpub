@@ -1,8 +1,8 @@
 """Token-to-SectionBlock conversion using source line positions"""
 
 from mdpub.crud.models import SectionBlockEnum
-from mdpub.core.models import ExtractedBlock
-from mdpub.core.utils.hashing import sha256
+from mdpub.core.models import StagedBlock
+from mdpub.core.utils.tokens import heading_level
 
 
 BLOCK_TYPE_MAP: dict[str, SectionBlockEnum] = {
@@ -15,13 +15,6 @@ BLOCK_TYPE_MAP: dict[str, SectionBlockEnum] = {
     'html_block':        SectionBlockEnum.html,
     'blockquote_open':   SectionBlockEnum.quote,
 }
-
-
-def _heading_level(token) -> int | None:
-    """Extract heading level (1-6) from a heading_open token tag, else None."""
-    if token.tag and token.tag[0] == 'h' and token.tag[1:].isdigit():
-        return int(token.tag[1:])
-    return None
 
 
 def _para_type(tokens: list, i: int) -> SectionBlockEnum:
@@ -44,10 +37,9 @@ def _source_slice(token, source_lines: list[str]) -> str:
     return token.content.rstrip()
 
 
-def tokens_to_blocks(tokens: list, source_lines: list[str]) -> list[ExtractedBlock]:
-    """Convert a section's token list to typed ExtractedBlocks."""
-    blocks: list[ExtractedBlock] = []
-    position = 0.0
+def tokens_to_blocks(tokens: list, source_lines: list[str]) -> list[StagedBlock]:
+    """Convert a flat token list to typed StagedBlocks (no hashes or positions)."""
+    blocks: list[StagedBlock] = []
     after_hr = False
 
     for i, tok in enumerate(tokens):
@@ -64,13 +56,10 @@ def tokens_to_blocks(tokens: list, source_lines: list[str]) -> list[ExtractedBlo
 
         content = _source_slice(tok, source_lines)
         final_type = SectionBlockEnum.footer if after_hr else block_type
-        blocks.append(ExtractedBlock(
+        blocks.append(StagedBlock(
             content=content,
-            hash=sha256(content),
             type=final_type,
-            position=position,
-            level=_heading_level(tok),
+            level=heading_level(tok),
         ))
-        position += 1.0
 
     return blocks

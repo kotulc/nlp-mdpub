@@ -1,45 +1,36 @@
 """Intermediate data models for the parse and extract pipeline"""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
+
+from pydantic import BaseModel
 
 from mdpub.crud.models import SectionBlockEnum
 
 
-@dataclass
-class ExtractedBlock:
-    content:  str
-    hash:     str
-    type:     SectionBlockEnum
-    position: float
-    level:    Optional[int] = None   # heading level (1-6) or None
+class StagedBlock(BaseModel):
+    """A single typed content block from a markdown document."""
+    type: SectionBlockEnum
+    content: str
+    level: Optional[int] = None     # heading level (1-6); None for non-headings
 
 
-@dataclass
-class ExtractedSection:
-    hash:     str
-    position: int
-    blocks:   list[ExtractedBlock] = field(default_factory=list)
+class StagedDoc(BaseModel):
+    """Public staging contract: source-faithful content written by extract, read by commit."""
+    slug: str
+    path: str
+    markdown: str                   # body without frontmatter (for versioning + doc hash)
+    frontmatter: dict[str, Any] = {}
+    blocks: list[StagedBlock]       # flat ordered list; no sections, hashes, or positions
 
 
 @dataclass
 class ParsedDoc:
+    """Internal parse result carrying markdown-it tokens; not persisted."""
     path:         Path
     slug:         str
     raw_markdown: str          # full file content (includes frontmatter)
     markdown:     str          # body only (frontmatter stripped)
-    hash:         str          # sha256 of raw_markdown
     frontmatter:  dict[str, Any]
     tokens:       list         # markdown-it Token objects
-
-
-@dataclass
-class ExtractedDoc:
-    slug:         str
-    path:         str          # str for JSON serialization
-    raw_markdown: str
-    markdown:     str
-    hash:         str
-    frontmatter:  dict[str, Any]
-    sections:     list[ExtractedSection] = field(default_factory=list)

@@ -1,41 +1,69 @@
 """Pipeline step functions: extract, commit, and export orchestration"""
 
-import dataclasses
-import json
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 
 from sqlmodel import Session
 
 from mdpub.core.export import write_doc
 from mdpub.core.extract.extract import extract_doc
+from mdpub.core.models import StagedBlock, StagedDoc
 from mdpub.core.parse import discover_files, parse_file
+from mdpub.core.utils.hashing import sha256
 from mdpub.crud.documents import commit_doc
 from mdpub.crud.models import SectionBlockEnum
+
+
+def _process(staged: StagedDoc, max_nesting: int) -> dict:
+    """Group flat blocks into sections and compute all hashes and positions."""
+    sections = []
+    current: list[StagedBlock] = []
+
+    def _flush(blocks: list[StagedBlock], position: int) -> dict:
+        hashed_blocks = [
+            {"content": b.content, "hash": sha256(b.content),
+             "type": b.type, "position": float(i), "level": b.level}
+            for i, b in enumerate(blocks)
+        ]
+        return {
+            "hash": sha256("".join(b["content"] for b in hashed_blocks)),
+            "position": position,
+            "blocks": hashed_blocks,
+        }
+
+    for block in staged.blocks:
+        if block.type == SectionBlockEnum.heading and block.level and block.level <= max_nesting:
+            if current:
+                sections.append(_flush(current, len(sections)))
+                current = []
+        current.append(block)
+    if current:
+        sections.append(_flush(current, len(sections)))
+
+    return {
+        "slug": staged.slug,
+        "path": staged.path,
+        "markdown": staged.markdown,
+        "hash": sha256(staged.markdown),
+        "frontmatter": staged.frontmatter,
+        "sections": sections,
+    }
 
 
 def run_extract(
     path: str,
     parser_config: str,
-    max_nesting: int,
     staging_dir: Path,
     ) -> list[tuple[str, Path]]:
-    """Parse path and write extracted JSON to staging_dir. Returns (source_path, staging_file) pairs."""
-    def _serial(obj):
-        if isinstance(obj, SectionBlockEnum):
-            return obj.value
-        if isinstance(obj, date):  # catches date and datetime (datetime subclasses date)
-            return obj.isoformat()
-        raise TypeError(type(obj))
-
+    """Parse path and write StagedDoc JSON to staging_dir. Returns (source_path, staging_file) pairs."""
     staging_dir.mkdir(parents=True, exist_ok=True)
     results = []
     for p in discover_files(Path(path)):
         try:
             parsed = parse_file(p, parser_config)
-            extracted = extract_doc(parsed, max_nesting)
-            out_file = staging_dir / f"{extracted.slug}.json"
-            out_file.write_text(json.dumps(dataclasses.asdict(extracted), default=_serial, indent=2))
+            staged = extract_doc(parsed)
+            out_file = staging_dir / f"{staged.slug}.json"
+            out_file.write_text(staged.model_dump_json(indent=2))
             results.append((p, out_file))
         except Exception as e:
             raise RuntimeError(f"Failed to extract {p}: {e}") from e
@@ -45,9 +73,10 @@ def run_extract(
 def run_commit(
     engine,
     max_versions: int,
+    max_nesting: int,
     staging_dir: Path,
     ) -> tuple[dict[str, int], list[tuple[str, str]]]:
-    """Commit staged JSON files to the database.
+    """Read staged StagedDoc JSON, process, and commit to database.
 
     Returns (counts, changes) where changes is a list of (status, slug) for
     created/updated docs. Returns ({}, []) when staging_dir is empty.
@@ -61,7 +90,8 @@ def run_commit(
     changes = []
     with Session(engine) as session:
         for f in files:
-            data = json.loads(f.read_text())
+            staged = StagedDoc.model_validate_json(f.read_text())
+            data = _process(staged, max_nesting)
             doc, status = commit_doc(session, data, max_versions, committed_at)
             counts[status] += 1
             if status != 'unchanged':

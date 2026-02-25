@@ -101,12 +101,10 @@ def test_slug_from_filename(tmp_path):
     assert doc.slug == "my-document"
 
 
-def test_parse_file_hash_matches_raw(tmp_path):
-    """parse_file hash is sha256 of full raw content including frontmatter."""
-    from mdpub.core.utils.hashing import sha256
+def test_parse_file_raw_markdown_preserved(tmp_path):
+    """parse_file stores the full raw content including frontmatter in raw_markdown."""
     f = tmp_path / "doc.md"
     raw = "---\ntitle: T\n---\n# Body\n"
     f.write_text(raw)
     doc = parse_file(f)
-    assert doc.hash == sha256(raw)
     assert doc.raw_markdown == raw

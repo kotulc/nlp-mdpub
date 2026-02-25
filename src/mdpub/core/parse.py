@@ -8,7 +8,6 @@ import yaml
 from markdown_it import MarkdownIt
 
 from mdpub.core.models import ParsedDoc
-from mdpub.core.utils.hashing import sha256
 from mdpub.core.utils.slug import slugify
 
 
@@ -53,7 +52,6 @@ def parse_file(path: Path, parser_config: str = 'gfm-like') -> ParsedDoc:
         slug=slug,
         raw_markdown=raw,
         markdown=body,
-        hash=sha256(raw),
         frontmatter=frontmatter,
         tokens=tokens,
     )

@@ -1,6 +1,6 @@
-"""Database engine, session, and schema initialization"""
+"""Database engine and schema initialization"""
 
-from sqlmodel import Session, SQLModel, create_engine
+from sqlmodel import SQLModel, create_engine
 
 
 def make_engine(url: str):
@@ -11,9 +11,3 @@ def make_engine(url: str):
 def init_db(engine) -> None:
     """Create all SQLModel tables on the given engine."""
     SQLModel.metadata.create_all(engine)
-
-
-def get_session(engine):
-    """Yield a SQLModel Session for the given engine."""
-    with Session(engine) as session:
-        yield session

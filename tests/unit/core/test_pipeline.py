@@ -44,14 +44,14 @@ def chdir_tmp(tmp_path, monkeypatch):
 def test_run_extract_writes_staging(tmp_path, staging_dir):
     """run_extract writes one JSON file per parsed document to staging_dir."""
     (tmp_path / "hello.md").write_text("# Hello\n\nWorld\n")
-    run_extract("hello.md", "gfm-like", 2, staging_dir)
+    run_extract("hello.md", "gfm-like", staging_dir)
     assert any(staging_dir.glob("*.json"))
 
 
 def test_run_extract_returns_pairs(tmp_path, staging_dir):
     """run_extract returns one (source_path, staging_file) pair per document."""
     (tmp_path / "hello.md").write_text("# Hello\n\nWorld\n")
-    results = run_extract("hello.md", "gfm-like", 2, staging_dir)
+    results = run_extract("hello.md", "gfm-like", staging_dir)
     assert len(results) == 1
     src, out_file = results[0]
     assert "hello" in str(src)
@@ -62,11 +62,11 @@ def test_run_extract_returns_pairs(tmp_path, staging_dir):
 def test_run_extract_staging_json_is_valid(tmp_path, staging_dir):
     """Staging files written by run_extract are valid JSON with expected keys."""
     (tmp_path / "doc.md").write_text("# Doc\n\nContent.\n")
-    results = run_extract("doc.md", "gfm-like", 2, staging_dir)
+    results = run_extract("doc.md", "gfm-like", staging_dir)
     _, out_file = results[0]
     data = json.loads(out_file.read_text())
     assert "slug" in data
-    assert "sections" in data
+    assert "blocks" in data
 
 
 @pytest.mark.parametrize("frontmatter,field,expected", [
@@ -76,7 +76,7 @@ def test_run_extract_staging_json_is_valid(tmp_path, staging_dir):
 def test_run_extract_serializes_date_frontmatter(tmp_path, staging_dir, frontmatter, field, expected):
     """run_extract converts date/datetime frontmatter values to ISO strings in staging JSON."""
     (tmp_path / "post.md").write_text(f"---\n{frontmatter}---\n\n# Post\n\nBody.\n")
-    results = run_extract("post.md", "gfm-like", 2, staging_dir)
+    results = run_extract("post.md", "gfm-like", staging_dir)
     _, out_file = results[0]
     data = json.loads(out_file.read_text())
     assert data["frontmatter"][field] == expected
@@ -88,21 +88,21 @@ def test_run_extract_raises_with_file_context_on_error(tmp_path, staging_dir, mo
     from mdpub.core import pipeline
     monkeypatch.setattr(pipeline, "extract_doc", lambda *a: (_ for _ in ()).throw(ValueError("oops")))
     with pytest.raises(RuntimeError, match="bad.md"):
-        run_extract("bad.md", "gfm-like", 2, staging_dir)
+        run_extract("bad.md", "gfm-like", staging_dir)
 
 
 def test_run_extract_raises_on_invalid_frontmatter(tmp_path, staging_dir):
     """run_extract wraps YAML parse errors with the source file path."""
     (tmp_path / "bad.md").write_text("---\nis this even a key?\n---\n# Body\n")
     with pytest.raises(RuntimeError, match="bad.md"):
-        run_extract("bad.md", "gfm-like", 2, staging_dir)
+        run_extract("bad.md", "gfm-like", staging_dir)
 
 
 # --- run_commit ---
 
 def test_run_commit_returns_empty_on_no_staging(engine, staging_dir):
     """run_commit returns ({}, []) when no staging files exist."""
-    counts, changes = run_commit(engine, max_versions=10, staging_dir=staging_dir)
+    counts, changes = run_commit(engine, max_versions=10, max_nesting=6, staging_dir=staging_dir)
     assert counts == {}
     assert changes == []
 
@@ -110,8 +110,8 @@ def test_run_commit_returns_empty_on_no_staging(engine, staging_dir):
 def test_run_commit_creates_docs(tmp_path, engine, staging_dir):
     """run_commit upserts staged docs and returns correct counts."""
     (tmp_path / "note.md").write_text("# Note\n\nBody.\n")
-    run_extract("note.md", "gfm-like", 2, staging_dir)
-    counts, changes = run_commit(engine, max_versions=10, staging_dir=staging_dir)
+    run_extract("note.md", "gfm-like", staging_dir)
+    counts, changes = run_commit(engine, max_versions=10, max_nesting=6, staging_dir=staging_dir)
     assert counts["created"] == 1
     assert counts["updated"] == 0
     assert any(status == "created" for status, _ in changes)
@@ -120,9 +120,9 @@ def test_run_commit_creates_docs(tmp_path, engine, staging_dir):
 def test_run_commit_unchanged_on_rerun(tmp_path, engine, staging_dir):
     """run_commit returns unchanged status when doc content has not changed."""
     (tmp_path / "note.md").write_text("# Note\n\nBody.\n")
-    run_extract("note.md", "gfm-like", 2, staging_dir)
-    run_commit(engine, max_versions=10, staging_dir=staging_dir)
-    counts, changes = run_commit(engine, max_versions=10, staging_dir=staging_dir)
+    run_extract("note.md", "gfm-like", staging_dir)
+    run_commit(engine, max_versions=10, max_nesting=6, staging_dir=staging_dir)
+    counts, changes = run_commit(engine, max_versions=10, max_nesting=6, staging_dir=staging_dir)
     assert counts["unchanged"] == 1
     assert changes == []
 
