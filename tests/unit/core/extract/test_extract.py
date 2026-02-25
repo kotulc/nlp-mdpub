@@ -19,7 +19,7 @@ def test_extract_flat_blocks(tmp_path):
     f.write_text("# One\n\nPara.\n\n# Two\n\nPara.\n")
     doc = extract_doc(parse_file(f))
     # heading + para + heading + para = 4 blocks (no nesting)
-    assert len(doc.blocks) == 4
+    assert len(doc.content) == 4
 
 
 def test_extract_frontmatter_preserved(tmp_path):
@@ -42,7 +42,7 @@ def test_extract_block_types(tmp_path):
     f = tmp_path / "doc.md"
     f.write_text("# Title\n\nA paragraph.\n")
     doc = extract_doc(parse_file(f))
-    types = [b.type for b in doc.blocks]
+    types = [b.type for b in doc.content]
     assert SectionBlockEnum.heading in types
     assert SectionBlockEnum.paragraph in types
 
@@ -52,5 +52,5 @@ def test_extract_no_headings(tmp_path):
     f = tmp_path / "flat.md"
     f.write_text("Just a paragraph.\n\nAnother one.\n")
     doc = extract_doc(parse_file(f))
-    assert len(doc.blocks) == 2
-    assert all(b.type == SectionBlockEnum.paragraph for b in doc.blocks)
+    assert len(doc.content) == 2
+    assert all(b.type == SectionBlockEnum.paragraph for b in doc.content)

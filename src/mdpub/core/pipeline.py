@@ -14,15 +14,22 @@ from mdpub.crud.documents import commit_doc
 from mdpub.crud.models import SectionBlockEnum
 
 
+def _heading_level(content: str) -> int | None:
+    """Derive heading level (1-6) from content string (e.g. '## Title' → 2), else None."""
+    stripped = content.lstrip()
+    count = len(stripped) - len(stripped.lstrip('#'))
+    return count if 1 <= count <= 6 else None
+
+
 def _process(staged: StagedDoc, max_nesting: int) -> dict:
-    """Group flat blocks into sections and compute all hashes and positions."""
+    """Group flat blocks into sections and compute all hashes, positions, and levels."""
     sections = []
     current: list[StagedBlock] = []
 
     def _flush(blocks: list[StagedBlock], position: int) -> dict:
         hashed_blocks = [
             {"content": b.content, "hash": sha256(b.content),
-             "type": b.type, "position": float(i), "level": b.level}
+             "type": b.type, "position": float(i), "level": _heading_level(b.content)}
             for i, b in enumerate(blocks)
         ]
         return {
@@ -31,8 +38,9 @@ def _process(staged: StagedDoc, max_nesting: int) -> dict:
             "blocks": hashed_blocks,
         }
 
-    for block in staged.blocks:
-        if block.type == SectionBlockEnum.heading and block.level and block.level <= max_nesting:
+    for block in staged.content:
+        level = _heading_level(block.content)
+        if block.type == SectionBlockEnum.heading and level and level <= max_nesting:
             if current:
                 sections.append(_flush(current, len(sections)))
                 current = []

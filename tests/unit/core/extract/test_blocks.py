@@ -23,7 +23,6 @@ def test_heading_block(parser):
     blocks = _parse_blocks(parser, "## Hello\n")
     assert len(blocks) == 1
     assert blocks[0].type == SectionBlockEnum.heading
-    assert blocks[0].level == 2
 
 
 def test_paragraph_block(parser):

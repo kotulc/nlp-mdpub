@@ -2,7 +2,6 @@
 
 from mdpub.crud.models import SectionBlockEnum
 from mdpub.core.models import StagedBlock
-from mdpub.core.utils.tokens import heading_level
 
 
 BLOCK_TYPE_MAP: dict[str, SectionBlockEnum] = {
@@ -38,7 +37,7 @@ def _source_slice(token, source_lines: list[str]) -> str:
 
 
 def tokens_to_blocks(tokens: list, source_lines: list[str]) -> list[StagedBlock]:
-    """Convert a flat token list to typed StagedBlocks (no hashes or positions)."""
+    """Convert a flat token list to typed StagedBlocks (no hashes, positions, or levels)."""
     blocks: list[StagedBlock] = []
     after_hr = False
 
@@ -56,10 +55,6 @@ def tokens_to_blocks(tokens: list, source_lines: list[str]) -> list[StagedBlock]
 
         content = _source_slice(tok, source_lines)
         final_type = SectionBlockEnum.footer if after_hr else block_type
-        blocks.append(StagedBlock(
-            content=content,
-            type=final_type,
-            level=heading_level(tok),
-        ))
+        blocks.append(StagedBlock(content=content, type=final_type))
 
     return blocks

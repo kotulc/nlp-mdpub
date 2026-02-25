@@ -66,7 +66,7 @@ def test_run_extract_staging_json_is_valid(tmp_path, staging_dir):
     _, out_file = results[0]
     data = json.loads(out_file.read_text())
     assert "slug" in data
-    assert "blocks" in data
+    assert "content" in data
 
 
 @pytest.mark.parametrize("frontmatter,field,expected", [

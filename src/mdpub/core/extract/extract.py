@@ -13,5 +13,5 @@ def extract_doc(parsed: ParsedDoc) -> StagedDoc:
         path=str(parsed.path),
         markdown=parsed.markdown,
         frontmatter=parsed.frontmatter,
-        blocks=blocks,
+        content=blocks,
     )

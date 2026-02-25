@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -13,7 +13,6 @@ class StagedBlock(BaseModel):
     """A single typed content block from a markdown document."""
     type: SectionBlockEnum
     content: str
-    level: Optional[int] = None     # heading level (1-6); None for non-headings
 
 
 class StagedDoc(BaseModel):
@@ -22,7 +21,7 @@ class StagedDoc(BaseModel):
     path: str
     markdown: str                   # body without frontmatter (for versioning + doc hash)
     frontmatter: dict[str, Any] = {}
-    blocks: list[StagedBlock]       # flat ordered list; no sections, hashes, or positions
+    content: list[StagedBlock]      # flat ordered list; no sections, hashes, or positions
 
 
 @dataclass
