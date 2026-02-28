@@ -173,7 +173,7 @@ def test_build_sidecar_section_tags_and_metrics():
     result = build_sidecar(doc, [sec], {sec.id: [tag]}, {sec.id: [metric]})
     assert len(result["sections"]) == 1
     s = result["sections"][0]
-    assert s["tags"] == ["nlp"]
+    assert s["tags"] == {"nlp": 1.0}
     assert s["metrics"] == {"sentiment": 0.8}
 
 
@@ -184,7 +184,7 @@ def test_build_sidecar_tag_order():
     t0 = _make_tag(sec.id, "first", position=0)
     t1 = _make_tag(sec.id, "second", position=1)
     result = build_sidecar(doc, [sec], {sec.id: [t1, t0]}, {})
-    assert result["sections"][0]["tags"] == ["first", "second"]
+    assert list(result["sections"][0]["tags"].keys()) == ["first", "second"]
 
 
 def test_build_sidecar_excludes_hidden():
@@ -198,12 +198,12 @@ def test_build_sidecar_excludes_hidden():
 
 
 def test_build_sidecar_max_tags_truncates():
-    """max_tags=1 limits the tags list to the first 1 entry (by position)."""
+    """max_tags=1 limits the tags dict to the first 1 entry (by position)."""
     doc = _make_doc()
     sec = _make_section(doc.id)
     tags = [_make_tag(sec.id, name, position=i) for i, name in enumerate(["a", "b", "c"])]
     result = build_sidecar(doc, [sec], {sec.id: tags}, {}, max_tags=1)
-    assert result["sections"][0]["tags"] == ["a"]
+    assert list(result["sections"][0]["tags"].keys()) == ["a"]
 
 
 def test_build_sidecar_max_metrics_truncates():
@@ -216,12 +216,12 @@ def test_build_sidecar_max_metrics_truncates():
 
 
 def test_build_sidecar_zero_means_unlimited():
-    """max_tags=0 returns all tags (0 is the unlimited sentinel)."""
+    """max_tags=0 returns all tags as a dict (0 is the unlimited sentinel)."""
     doc = _make_doc()
     sec = _make_section(doc.id)
     tags = [_make_tag(sec.id, name, position=i) for i, name in enumerate(["a", "b", "c"])]
     result = build_sidecar(doc, [sec], {sec.id: tags}, {}, max_tags=0)
-    assert result["sections"][0]["tags"] == ["a", "b", "c"]
+    assert list(result["sections"][0]["tags"].keys()) == ["a", "b", "c"]
 
 
 def test_build_sidecar_committed_at_isoformat():

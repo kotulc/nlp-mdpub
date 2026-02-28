@@ -13,7 +13,7 @@ class StagedBlock(BaseModel):
     """A single typed content block from a markdown document."""
     type: SectionBlockEnum
     content: str
-    tags: list[str] = []
+    tags: dict[str, float] = {}   # tag_name → relevance score
     metrics: dict[str, float] = {}
 
 

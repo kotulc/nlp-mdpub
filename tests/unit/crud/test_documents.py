@@ -347,7 +347,7 @@ def _staged_with_enrichment(slug="enriched", path="enriched.md") -> dict:
             "blocks": [{"content": "# Hello", "hash": sha256("# Hello"),
                         "type": "heading", "position": 0.0, "level": 1}],
             "metrics": {"sentiment": 0.8, "word_count": 5.0},
-            "tags": ["nlp", "ml"],
+            "tags": {"nlp": 0.9, "ml": 0.7},
         }],
     }
 
@@ -369,10 +369,12 @@ def test_commit_doc_writes_tags(session):
 
 
 def test_commit_doc_tag_positions(session):
-    """SectionTag rows are ordered by their position in the tags list."""
+    """SectionTag rows are ordered by their position in the tags dict."""
     commit_doc(session, _staged_with_enrichment())
     section_tags = sorted(session.exec(select(SectionTag)).all(), key=lambda t: t.position)
     assert [st.tag_name for st in section_tags] == ["nlp", "ml"]
+    assert section_tags[0].relevance == 0.9
+    assert section_tags[1].relevance == 0.7
 
 
 def test_commit_doc_clears_metrics_on_update(session):

@@ -53,10 +53,12 @@ def build_sidecar(
         "sections": [
             {
                 "position": s.position,
-                "tags": [
-                    st.tag_name
-                    for st in sorted(tags_by_section.get(s.id, []), key=lambda t: t.position or 0)
-                ][:tag_limit],
+                "tags": dict(
+                    list({
+                        st.tag_name: st.relevance
+                        for st in sorted(tags_by_section.get(s.id, []), key=lambda t: t.position or 0)
+                    }.items())[:tag_limit]
+                ),
                 "metrics": dict(
                     list({m.name: m.value for m in metrics_by_section.get(s.id, [])}.items())
                     [:metric_limit]

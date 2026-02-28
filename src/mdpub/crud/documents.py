@@ -91,12 +91,12 @@ def _replace_sections(session: Session, doc_id, sections: list[dict]) -> None:
         for name, value in sec.get('metrics', {}).items():
             session.add(SectionMetric(section_id=section.id, name=name, value=value))
 
-        for position, tag_name in enumerate(sec.get('tags', [])):
+        for position, (tag_name, relevance) in enumerate(sec.get('tags', {}).items()):
             if not session.get(Tag, tag_name):
                 session.add(Tag(name=tag_name, category=""))
                 session.flush()
             session.add(SectionTag(section_id=section.id, tag_name=tag_name,
-                                   relevance=1.0, position=position))
+                                   relevance=relevance, position=position))
 
     session.flush()
 

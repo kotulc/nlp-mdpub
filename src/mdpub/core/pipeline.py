@@ -32,10 +32,11 @@ def _process(staged: StagedDoc, max_nesting: int) -> dict:
              "type": b.type, "position": float(i), "level": _heading_level(b.content)}
             for i, b in enumerate(blocks)
         ]
-        # Aggregate tags (deduplicated, insertion order) and metrics (last-wins) from all blocks.
-        tags = list(dict.fromkeys(t for b in blocks for t in b.tags))
+        # Aggregate tags and metrics from all blocks (last-wins on duplicate keys).
+        tags: dict[str, float] = {}
         metrics: dict[str, float] = {}
         for b in blocks:
+            tags.update(b.tags)
             metrics.update(b.metrics)
         return {
             "hash": sha256("".join(b["content"] for b in hashed_blocks)),

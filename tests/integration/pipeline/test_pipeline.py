@@ -268,13 +268,13 @@ ENRICHED_STAGING = """\
     {
       "type": "heading",
       "content": "# Intro",
-      "tags": ["alpha", "beta", "gamma"],
+      "tags": {"alpha": 0.9, "beta": 0.8, "gamma": 0.7},
       "metrics": {"a": 1.0, "b": 2.0, "c": 3.0}
     },
     {
       "type": "paragraph",
       "content": "Body.",
-      "tags": [],
+      "tags": {},
       "metrics": {}
     }
   ]
