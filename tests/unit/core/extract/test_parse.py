@@ -1,9 +1,9 @@
-"""Unit tests for core/parse.py"""
+"""Unit tests for core/extract/parse.py"""
 
 import pytest
 from pathlib import Path
 
-from mdpub.core.parse import _strip_frontmatter, discover_files, parse_file
+from mdpub.core.extract.parse import _strip_frontmatter, discover_files, parse_file
 from mdpub.core.models import ParsedDoc
 
 

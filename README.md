@@ -199,4 +199,4 @@ the argument indent (one level in from def), not back to the def column.
 - Keep unit and integration tests separate, short, and isolated
 - Unit tests should test a single function with names like `test_<function>_<case>`
 - Tests should be able to be described in a single line with triple quote docstrings
-- Use paramaterized tests when possible to avoid test sprawl
+- Use parameterized tests when possible to avoid test sprawl

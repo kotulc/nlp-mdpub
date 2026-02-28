@@ -7,7 +7,10 @@ from uuid import uuid4
 from sqlalchemy import func
 from sqlmodel import Session, select
 
-from mdpub.crud.models import Document, Section, SectionBlock, SectionBlockEnum
+from mdpub.crud.models import (
+    Document, Section, SectionBlock, SectionBlockEnum,
+    SectionMetric, SectionTag, Tag,
+)
 from mdpub.crud.versioning import save_version
 
 
@@ -57,11 +60,15 @@ def list_collections(session: Session) -> list[str]:
 
 
 def _replace_sections(session: Session, doc_id, sections: list[dict]) -> None:
-    """Delete all existing sections/blocks for a document and insert new ones."""
+    """Delete all existing sections/blocks/metrics/tags for a document and insert new ones."""
     existing = session.exec(select(Section).where(Section.document_id == doc_id)).all()
     for s in existing:
-        for b in session.exec(select(SectionBlock).where(SectionBlock.section_id == s.id)).all():
-            session.delete(b)
+        for row in session.exec(select(SectionMetric).where(SectionMetric.section_id == s.id)).all():
+            session.delete(row)
+        for row in session.exec(select(SectionTag).where(SectionTag.section_id == s.id)).all():
+            session.delete(row)
+        for row in session.exec(select(SectionBlock).where(SectionBlock.section_id == s.id)).all():
+            session.delete(row)
         session.delete(s)
     session.flush()
 
@@ -69,6 +76,7 @@ def _replace_sections(session: Session, doc_id, sections: list[dict]) -> None:
         section = Section(document_id=doc_id, hash=sec['hash'], position=sec['position'])
         session.add(section)
         session.flush()
+
         for blk in sec['blocks']:
             session.add(SectionBlock(
                 id=uuid4(),
@@ -79,6 +87,17 @@ def _replace_sections(session: Session, doc_id, sections: list[dict]) -> None:
                 position=blk['position'],
                 level=blk.get('level'),
             ))
+
+        for name, value in sec.get('metrics', {}).items():
+            session.add(SectionMetric(section_id=section.id, name=name, value=value))
+
+        for position, tag_name in enumerate(sec.get('tags', [])):
+            if not session.get(Tag, tag_name):
+                session.add(Tag(name=tag_name, category=""))
+                session.flush()
+            session.add(SectionTag(section_id=section.id, tag_name=tag_name,
+                                   relevance=1.0, position=position))
+
     session.flush()
 
 

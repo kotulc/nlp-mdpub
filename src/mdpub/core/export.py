@@ -6,59 +6,56 @@ from pathlib import Path
 import yaml
 from sqlmodel import Session, select
 
-from mdpub.crud.models import Document, DocumentVersion, Section, SectionBlock
-from mdpub.crud.versioning import list_versions
+from mdpub.crud.models import Document, Section, SectionBlock, SectionMetric, SectionTag
 
 
-def build_mdx(doc: Document, fmt: str = 'mdx') -> str:
-    """Return doc.markdown with a merged YAML frontmatter block prepended."""
+def build_body(sections: list[Section], blocks_by_section: dict) -> str:
+    """Reconstruct markdown body from DB sections/blocks, skipping hidden sections."""
+    parts = []
+    for s in sorted(sections, key=lambda s: s.position):
+        if s.hidden:
+            continue
+        blocks = sorted(blocks_by_section.get(s.id, []), key=lambda b: b.position)
+        if blocks:
+            parts.append("\n\n".join(b.content for b in blocks))
+    return "\n\n".join(parts)
+
+
+def build_mdx(doc: Document, body: str) -> str:
+    """Return body with a merged YAML frontmatter block prepended (slug + user fields only)."""
     fm = dict(doc.frontmatter or {})
     fm['slug'] = doc.slug
-    fm['doc_id'] = str(doc.id)
-    fm['hash'] = doc.hash
-    body = doc.markdown.lstrip('\n')
     header = yaml.dump(fm, default_flow_style=False, allow_unicode=True, sort_keys=False)
-    return f"---\n{header}---\n\n{body}"
+    return f"---\n{header}---\n\n{body.lstrip()}"
 
 
 def build_sidecar(
     doc: Document,
     sections: list[Section],
-    blocks_by_section: dict,
-    versions: list[DocumentVersion],
+    tags_by_section: dict,
+    metrics_by_section: dict,
     ) -> dict:
-    """Build the sidecar JSON dict for a document."""
+    """Build the minimal sidecar JSON dict: slug, path, committed_at, frontmatter, sections.
+
+    Each section entry contains only position, tags (ordered by SectionTag.position),
+    and metrics. Hidden sections are excluded.
+    """
     return {
         "slug": doc.slug,
-        "doc_id": str(doc.id),
         "path": doc.path,
-        "hash": doc.hash,
         "committed_at": doc.committed_at.isoformat() if doc.committed_at else None,
         "frontmatter": doc.frontmatter or {},
         "sections": [
             {
                 "position": s.position,
-                "hash": s.hash,
-                "blocks": [
-                    {
-                        "type": b.type.value,
-                        "content": b.content,
-                        "hash": b.hash,
-                        "position": b.position,
-                        "level": b.level,
-                    }
-                    for b in sorted(blocks_by_section.get(s.id, []), key=lambda b: b.position)
+                "tags": [
+                    st.tag_name
+                    for st in sorted(tags_by_section.get(s.id, []), key=lambda t: t.position or 0)
                 ],
+                "metrics": {m.name: m.value for m in metrics_by_section.get(s.id, [])},
             }
             for s in sorted(sections, key=lambda s: s.position)
-        ],
-        "versions": [
-            {
-                "version_num": v.version_num,
-                "hash": v.hash,
-                "created_at": v.created_at.isoformat(),
-            }
-            for v in versions
+            if not s.hidden
         ],
     }
 
@@ -81,19 +78,26 @@ def write_doc(
     dest_dir.mkdir(parents=True, exist_ok=True)
 
     sections = session.exec(select(Section).where(Section.document_id == doc.id)).all()
-    blocks_by_section: dict = {}
-    for s in sections:
-        blocks_by_section[s.id] = session.exec(
-            select(SectionBlock).where(SectionBlock.section_id == s.id)
-        ).all()
-    versions = list_versions(session, doc.id)
+    blocks_by_section = {
+        s.id: session.exec(select(SectionBlock).where(SectionBlock.section_id == s.id)).all()
+        for s in sections
+    }
+    tags_by_section = {
+        s.id: session.exec(select(SectionTag).where(SectionTag.section_id == s.id)).all()
+        for s in sections
+    }
+    metrics_by_section = {
+        s.id: session.exec(select(SectionMetric).where(SectionMetric.section_id == s.id)).all()
+        for s in sections
+    }
 
+    body = build_body(sections, blocks_by_section)
     mdx_path = dest_dir / f"{doc.slug}.{fmt}"
     json_path = dest_dir / f"{doc.slug}.json"
 
-    mdx_path.write_text(build_mdx(doc, fmt), encoding='utf-8')
+    mdx_path.write_text(build_mdx(doc, body), encoding='utf-8')
     json_path.write_text(
-        json.dumps(build_sidecar(doc, sections, blocks_by_section, versions), indent=2),
+        json.dumps(build_sidecar(doc, sections, tags_by_section, metrics_by_section), indent=2),
         encoding='utf-8',
     )
     return mdx_path, json_path

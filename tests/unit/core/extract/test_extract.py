@@ -1,7 +1,7 @@
 """Unit tests for core/extract/extract.py"""
 
 from mdpub.core.extract.extract import extract_doc
-from mdpub.core.parse import parse_file
+from mdpub.core.extract.parse import parse_file
 from mdpub.core.models import StagedDoc
 from mdpub.crud.models import SectionBlockEnum
 

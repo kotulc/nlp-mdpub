@@ -13,6 +13,8 @@ class StagedBlock(BaseModel):
     """A single typed content block from a markdown document."""
     type: SectionBlockEnum
     content: str
+    tags: list[str] = []
+    metrics: dict[str, float] = {}
 
 
 class StagedDoc(BaseModel):

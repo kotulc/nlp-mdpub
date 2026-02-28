@@ -11,7 +11,10 @@ from mdpub.crud.documents import (
     commit_doc, get_by_path, get_by_slug, _replace_sections,
     get_last_committed, get_by_collection, get_all_documents, list_collections,
 )
-from mdpub.crud.models import Document, DocumentVersion, Section, SectionBlock, SectionBlockEnum
+from mdpub.crud.models import (
+    Document, DocumentVersion, Section, SectionBlock, SectionBlockEnum,
+    SectionMetric, SectionTag, Tag,
+)
 
 
 # --- helpers ---
@@ -326,3 +329,69 @@ def test_list_collections_distinct(session):
 
     cols = list_collections(session)
     assert cols == [".", "docs", "posts"]
+
+
+# --- metrics and tags ---
+
+def _staged_with_enrichment(slug="enriched", path="enriched.md") -> dict:
+    """Staged doc dict with a section that has metrics and tags."""
+    return {
+        "slug": slug,
+        "path": path,
+        "markdown": "# Hello\n",
+        "hash": sha256("# Hello\n"),
+        "frontmatter": {},
+        "sections": [{
+            "hash": sha256("# Hello"),
+            "position": 0,
+            "blocks": [{"content": "# Hello", "hash": sha256("# Hello"),
+                        "type": "heading", "position": 0.0, "level": 1}],
+            "metrics": {"sentiment": 0.8, "word_count": 5.0},
+            "tags": ["nlp", "ml"],
+        }],
+    }
+
+
+def test_commit_doc_writes_metrics(session):
+    """commit_doc persists SectionMetric rows when metrics are present in staged data."""
+    commit_doc(session, _staged_with_enrichment())
+    metrics = session.exec(select(SectionMetric)).all()
+    assert {m.name: m.value for m in metrics} == {"sentiment": 0.8, "word_count": 5.0}
+
+
+def test_commit_doc_writes_tags(session):
+    """commit_doc creates Tag and SectionTag rows when tags are present in staged data."""
+    commit_doc(session, _staged_with_enrichment())
+    tags = session.exec(select(Tag)).all()
+    assert {t.name for t in tags} == {"nlp", "ml"}
+    section_tags = session.exec(select(SectionTag)).all()
+    assert len(section_tags) == 2
+
+
+def test_commit_doc_tag_positions(session):
+    """SectionTag rows are ordered by their position in the tags list."""
+    commit_doc(session, _staged_with_enrichment())
+    section_tags = sorted(session.exec(select(SectionTag)).all(), key=lambda t: t.position)
+    assert [st.tag_name for st in section_tags] == ["nlp", "ml"]
+
+
+def test_commit_doc_clears_metrics_on_update(session):
+    """Re-committing a doc with changed content replaces its metrics."""
+    commit_doc(session, _staged_with_enrichment())
+    updated = _staged_with_enrichment()
+    updated["hash"] = sha256("updated")
+    updated["sections"][0]["metrics"] = {"toxicity": 0.1}
+    commit_doc(session, updated)
+    metrics = session.exec(select(SectionMetric)).all()
+    assert [m.name for m in metrics] == ["toxicity"]
+
+
+def test_replace_sections_reuses_existing_tag(session):
+    """Tags that already exist in the Tag table are reused rather than duplicated."""
+    session.add(Tag(name="nlp", category="existing"))
+    session.flush()
+    commit_doc(session, _staged_with_enrichment())
+    tags = session.exec(select(Tag)).all()
+    assert len(tags) == 2  # "nlp" reused, "ml" created
+    nlp = session.get(Tag, "nlp")
+    assert nlp.category == "existing"  # original category preserved

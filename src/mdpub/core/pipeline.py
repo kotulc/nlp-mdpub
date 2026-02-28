@@ -8,7 +8,7 @@ from sqlmodel import Session
 from mdpub.core.export import write_doc
 from mdpub.core.extract.extract import extract_doc
 from mdpub.core.models import StagedBlock, StagedDoc
-from mdpub.core.parse import discover_files, parse_file
+from mdpub.core.extract.parse import discover_files, parse_file
 from mdpub.core.utils.hashing import sha256
 from mdpub.crud.documents import commit_doc
 from mdpub.crud.models import SectionBlockEnum
@@ -32,10 +32,17 @@ def _process(staged: StagedDoc, max_nesting: int) -> dict:
              "type": b.type, "position": float(i), "level": _heading_level(b.content)}
             for i, b in enumerate(blocks)
         ]
+        # Aggregate tags (deduplicated, insertion order) and metrics (last-wins) from all blocks.
+        tags = list(dict.fromkeys(t for b in blocks for t in b.tags))
+        metrics: dict[str, float] = {}
+        for b in blocks:
+            metrics.update(b.metrics)
         return {
             "hash": sha256("".join(b["content"] for b in hashed_blocks)),
             "position": position,
             "blocks": hashed_blocks,
+            "tags": tags,
+            "metrics": metrics,
         }
 
     for block in staged.content:
