@@ -197,6 +197,33 @@ def test_build_sidecar_excludes_hidden():
     assert result["sections"][0]["position"] == 0
 
 
+def test_build_sidecar_max_tags_truncates():
+    """max_tags=1 limits the tags list to the first 1 entry (by position)."""
+    doc = _make_doc()
+    sec = _make_section(doc.id)
+    tags = [_make_tag(sec.id, name, position=i) for i, name in enumerate(["a", "b", "c"])]
+    result = build_sidecar(doc, [sec], {sec.id: tags}, {}, max_tags=1)
+    assert result["sections"][0]["tags"] == ["a"]
+
+
+def test_build_sidecar_max_metrics_truncates():
+    """max_metrics=1 limits the metrics dict to 1 entry."""
+    doc = _make_doc()
+    sec = _make_section(doc.id)
+    metrics = [_make_metric(sec.id, name, float(i)) for i, name in enumerate(["x", "y", "z"])]
+    result = build_sidecar(doc, [sec], {}, {sec.id: metrics}, max_metrics=1)
+    assert len(result["sections"][0]["metrics"]) == 1
+
+
+def test_build_sidecar_zero_means_unlimited():
+    """max_tags=0 returns all tags (0 is the unlimited sentinel)."""
+    doc = _make_doc()
+    sec = _make_section(doc.id)
+    tags = [_make_tag(sec.id, name, position=i) for i, name in enumerate(["a", "b", "c"])]
+    result = build_sidecar(doc, [sec], {sec.id: tags}, {}, max_tags=0)
+    assert result["sections"][0]["tags"] == ["a", "b", "c"]
+
+
 def test_build_sidecar_committed_at_isoformat():
     """committed_at is serialized as an ISO 8601 string."""
     doc = _make_doc(committed_at=datetime(2026, 2, 22))

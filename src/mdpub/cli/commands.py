@@ -47,11 +47,17 @@ def _echo_commit(counts: dict, changes: list) -> None:
 
 def build_cmd(
     path: Annotated[str, typer.Argument(help="File or directory to process")],
-    out: Annotated[Optional[str], typer.Option("--out-dir", help="Output directory override")] = None,
-    staging: Annotated[Optional[str], typer.Option("--staging-dir", help="Staging directory override")] = None,
+    out: Annotated[Optional[str], typer.Option("--out-dir", help="Output directory")] = None,
+    staging: Annotated[Optional[str], typer.Option("--staging-dir", help="Staging directory")] = None,
+    parser: Annotated[Optional[str], typer.Option("--parser-config", help="MarkdownIt preset name")] = None,
+    nesting: Annotated[Optional[int], typer.Option("--max-nesting", help="Max heading depth for sections")] = None,
+    versions: Annotated[Optional[int], typer.Option("--max-versions", help="Max stored versions per doc")] = None,
     ):
     """Run the full pipeline: extract -> commit -> export."""
-    settings = _settings(overrides={"output_dir": out, "staging_dir": staging})
+    settings = _settings(overrides={
+        "output_dir": out, "staging_dir": staging,
+        "parser_config": parser, "max_nesting": nesting, "max_versions": versions,
+    })
     engine = make_engine(settings.db_url)
     init_db(engine)
     staging_dir = Path(settings.staging_dir)
@@ -77,7 +83,10 @@ def build_cmd(
     try:
         with Session(engine) as session:
             exported = get_last_committed(session)
-            results = run_export(session, exported, output_dir, settings.output_format)
+            results = run_export(
+                session, exported, output_dir, settings.output_format,
+                settings.max_tags, settings.max_metrics,
+            )
     except Exception as e:
         _fail("Export failed", e)
     for slug, mdx_path in results:
@@ -114,10 +123,11 @@ def init_cmd(
 
 def extract_cmd(
     path: Annotated[str, typer.Argument(help="File or directory to extract from")],
-    staging: Annotated[Optional[str], typer.Option("--staging-dir", help="Staging directory override")] = None,
+    staging: Annotated[Optional[str], typer.Option("--staging-dir", help="Staging directory")] = None,
+    parser: Annotated[Optional[str], typer.Option("--parser-config", help="MarkdownIt preset name")] = None,
     ):
     """Recursively extract blocks, frontmatter, and content hash."""
-    settings = _settings(overrides={"staging_dir": staging})
+    settings = _settings(overrides={"staging_dir": staging, "parser_config": parser})
     staging_dir = Path(settings.staging_dir)
     try:
         results = run_extract(path, settings.parser_config, staging_dir)
@@ -129,10 +139,12 @@ def extract_cmd(
 
 
 def commit_cmd(
-    staging: Annotated[Optional[str], typer.Option("--staging-dir", help="Staging directory override")] = None,
+    staging: Annotated[Optional[str], typer.Option("--staging-dir", help="Staging directory")] = None,
+    nesting: Annotated[Optional[int], typer.Option("--max-nesting", help="Max heading depth for sections")] = None,
+    versions: Annotated[Optional[int], typer.Option("--max-versions", help="Max stored versions per doc")] = None,
     ):
     """Upsert parsed document data to the database."""
-    settings = _settings(overrides={"staging_dir": staging})
+    settings = _settings(overrides={"staging_dir": staging, "max_nesting": nesting, "max_versions": versions})
     engine = make_engine(settings.db_url)
     init_db(engine)
     staging_dir = Path(settings.staging_dir)
@@ -149,12 +161,14 @@ def commit_cmd(
 
 
 def export_cmd(
-    out: Annotated[Optional[str], typer.Option("--out-dir", help="Output directory override")] = None,
+    out: Annotated[Optional[str], typer.Option("--out-dir", help="Output directory")] = None,
     collection: Annotated[Optional[str], typer.Option("--collection", help="Export docs under this top-level directory")] = None,
     all_docs: Annotated[bool, typer.Option("--all", help="Export all documents in the database")] = False,
+    max_tags: Annotated[Optional[int], typer.Option("--max-tags", help="Max tags per section; 0 = unlimited")] = None,
+    max_metrics: Annotated[Optional[int], typer.Option("--max-metrics", help="Max metrics per section; 0 = unlimited")] = None,
     ):
     """Write standardized MD/MDX + sidecar JSON to output dir."""
-    settings = _settings(overrides={"output_dir": out})
+    settings = _settings(overrides={"output_dir": out, "max_tags": max_tags, "max_metrics": max_metrics})
     engine = make_engine(settings.db_url)
     init_db(engine)
     output_dir = Path(settings.output_dir)
@@ -175,7 +189,10 @@ def export_cmd(
                 typer.echo(f"No documents found for scope: {scope}.")
                 raise typer.Exit(1)  # intentional early exit; re-raised below
 
-            results = run_export(session, docs, output_dir, settings.output_format)
+            results = run_export(
+                session, docs, output_dir, settings.output_format,
+                settings.max_tags, settings.max_metrics,
+            )
     except typer.Exit:
         raise  # re-raise intentional no-docs exit before generic handler
     except Exception as e:

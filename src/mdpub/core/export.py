@@ -34,12 +34,17 @@ def build_sidecar(
     sections: list[Section],
     tags_by_section: dict,
     metrics_by_section: dict,
+    max_tags: int = 0,
+    max_metrics: int = 0,
     ) -> dict:
     """Build the minimal sidecar JSON dict: slug, path, committed_at, frontmatter, sections.
 
     Each section entry contains only position, tags (ordered by SectionTag.position),
     and metrics. Hidden sections are excluded.
+    max_tags / max_metrics limit entries per section (0 = unlimited).
     """
+    tag_limit    = max_tags    or None
+    metric_limit = max_metrics or None
     return {
         "slug": doc.slug,
         "path": doc.path,
@@ -51,8 +56,11 @@ def build_sidecar(
                 "tags": [
                     st.tag_name
                     for st in sorted(tags_by_section.get(s.id, []), key=lambda t: t.position or 0)
-                ],
-                "metrics": {m.name: m.value for m in metrics_by_section.get(s.id, [])},
+                ][:tag_limit],
+                "metrics": dict(
+                    list({m.name: m.value for m in metrics_by_section.get(s.id, [])}.items())
+                    [:metric_limit]
+                ),
             }
             for s in sorted(sections, key=lambda s: s.position)
             if not s.hidden
@@ -65,6 +73,8 @@ def write_doc(
     session: Session,
     output_dir: Path,
     fmt: str = 'mdx',
+    max_tags: int = 0,
+    max_metrics: int = 0,
     ) -> tuple[Path, Path]:
     """Write MDX/MD + sidecar JSON for a single document.
 
@@ -97,7 +107,7 @@ def write_doc(
 
     mdx_path.write_text(build_mdx(doc, body), encoding='utf-8')
     json_path.write_text(
-        json.dumps(build_sidecar(doc, sections, tags_by_section, metrics_by_section), indent=2),
+        json.dumps(build_sidecar(doc, sections, tags_by_section, metrics_by_section, max_tags, max_metrics), indent=2),
         encoding='utf-8',
     )
     return mdx_path, json_path

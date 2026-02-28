@@ -41,3 +41,49 @@ def test_load_config_invalid_yaml(tmp_path, monkeypatch):
     (tmp_path / "config.yaml").write_text("key: [unclosed\n")
     with pytest.raises(ValueError, match="Invalid config.yaml"):
         load_config()
+
+
+# --- generalized env var pattern ---
+
+def test_load_config_env_max_nesting(monkeypatch):
+    """MDPUB_MAX_NESTING env var is coerced to int and applied to settings."""
+    monkeypatch.setenv("MDPUB_MAX_NESTING", "3")
+    settings = load_config()
+    assert settings.max_nesting == 3
+
+
+def test_load_config_env_output_format(monkeypatch):
+    """MDPUB_OUTPUT_FORMAT env var is applied to settings."""
+    monkeypatch.setenv("MDPUB_OUTPUT_FORMAT", "md")
+    settings = load_config()
+    assert settings.output_format == "md"
+
+
+def test_load_config_env_max_tags(monkeypatch):
+    """MDPUB_MAX_TAGS env var is coerced to int and applied to settings."""
+    monkeypatch.setenv("MDPUB_MAX_TAGS", "5")
+    settings = load_config()
+    assert settings.max_tags == 5
+
+
+def test_load_config_env_max_metrics(monkeypatch):
+    """MDPUB_MAX_METRICS env var is coerced to int and applied to settings."""
+    monkeypatch.setenv("MDPUB_MAX_METRICS", "2")
+    settings = load_config()
+    assert settings.max_metrics == 2
+
+
+def test_load_config_env_overrides_config_yaml_max_nesting(tmp_path, monkeypatch):
+    """MDPUB_MAX_NESTING env var takes precedence over config.yaml."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "config.yaml").write_text("max_nesting: 4\n")
+    monkeypatch.setenv("MDPUB_MAX_NESTING", "2")
+    settings = load_config()
+    assert settings.max_nesting == 2
+
+
+def test_load_config_cli_overrides_env_max_nesting(monkeypatch):
+    """A non-None CLI override beats the MDPUB_MAX_NESTING env var."""
+    monkeypatch.setenv("MDPUB_MAX_NESTING", "3")
+    settings = load_config(overrides={"max_nesting": 1})
+    assert settings.max_nesting == 1

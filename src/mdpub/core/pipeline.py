@@ -120,10 +120,12 @@ def run_export(
     docs: list,
     output_dir: Path,
     fmt: str,
+    max_tags: int = 0,
+    max_metrics: int = 0,
     ) -> list[tuple[str, Path]]:
     """Write docs to output_dir using an open session. Returns (slug, mdx_path) pairs."""
     results = []
     for doc in docs:
-        mdx_path, _ = write_doc(doc, session, output_dir, fmt)
+        mdx_path, _ = write_doc(doc, session, output_dir, fmt, max_tags, max_metrics)
         results.append((doc.slug, mdx_path))
     return results

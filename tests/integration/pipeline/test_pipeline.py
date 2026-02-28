@@ -251,3 +251,103 @@ def test_export_md_format(source_file, staging_dir, engine, tmp_path):
     mdx_path, _ = _build_and_export(source_file, staging_dir, engine, tmp_path, fmt="md")
     assert mdx_path.suffix == ".md"
     assert mdx_path.exists()
+
+
+# --- config-effect tests ---
+#
+# Canonical staging JSON used below includes 3 tags and 3 metrics on each block
+# so that max_tags / max_metrics limits are easy to verify against a known count.
+
+ENRICHED_STAGING = """\
+{
+  "slug": "enriched",
+  "path": "enriched.md",
+  "markdown": "# Intro\\n\\nBody.",
+  "frontmatter": {},
+  "content": [
+    {
+      "type": "heading",
+      "content": "# Intro",
+      "tags": ["alpha", "beta", "gamma"],
+      "metrics": {"a": 1.0, "b": 2.0, "c": 3.0}
+    },
+    {
+      "type": "paragraph",
+      "content": "Body.",
+      "tags": [],
+      "metrics": {}
+    }
+  ]
+}
+"""
+
+
+def _commit_enriched(staging_dir, engine, max_nesting=2):
+    """Write the enriched staging file and commit it; return the engine."""
+    staging_dir.mkdir(parents=True, exist_ok=True)
+    (staging_dir / "enriched.json").write_text(ENRICHED_STAGING)
+    run_commit(engine, max_versions=10, max_nesting=max_nesting, staging_dir=staging_dir)
+    return engine
+
+
+def _export_enriched(engine, tmp_path, max_tags=0, max_metrics=0):
+    """Export the committed enriched doc with the given limits; return the sidecar JSON dict."""
+    out = tmp_path / "dist"
+    with Session(engine) as s:
+        from mdpub.crud.models import Document
+        docs = s.exec(select(Document)).all()
+        results = run_export(s, docs, out, "mdx", max_tags=max_tags, max_metrics=max_metrics)
+    _, mdx_path = results[0]
+    return json.loads(mdx_path.with_suffix(".json").read_text())
+
+
+def test_max_nesting_1_produces_one_section(source_file, staging_dir, engine):
+    """max_nesting=1 keeps h2 inside the h1 section — canonical doc produces 1 section."""
+    run_extract(str(source_file), "gfm-like", staging_dir)
+    run_commit(engine, max_versions=10, max_nesting=1, staging_dir=staging_dir)
+    with Session(engine) as s:
+        sections = s.exec(select(Section)).all()
+    assert len(sections) == 1
+
+
+def test_max_nesting_2_produces_two_sections(source_file, staging_dir, engine):
+    """max_nesting=2 splits h1 and h2 into 2 sections (canonical document)."""
+    run_extract(str(source_file), "gfm-like", staging_dir)
+    run_commit(engine, max_versions=10, max_nesting=2, staging_dir=staging_dir)
+    with Session(engine) as s:
+        sections = s.exec(select(Section)).all()
+    assert len(sections) == 2
+
+
+def test_max_tags_limits_sidecar_output(staging_dir, engine, tmp_path):
+    """max_tags=2 truncates the tags list to 2 entries in the exported sidecar JSON."""
+    _commit_enriched(staging_dir, engine)
+    data = _export_enriched(engine, tmp_path, max_tags=2)
+    assert all(len(s["tags"]) <= 2 for s in data["sections"])
+
+
+def test_max_tags_zero_is_unlimited(staging_dir, engine, tmp_path):
+    """max_tags=0 (default) exports all 3 tags without truncation."""
+    _commit_enriched(staging_dir, engine)
+    data = _export_enriched(engine, tmp_path, max_tags=0)
+    tag_counts = [len(s["tags"]) for s in data["sections"]]
+    assert max(tag_counts) == 3
+
+
+def test_max_metrics_limits_sidecar_output(staging_dir, engine, tmp_path):
+    """max_metrics=1 truncates the metrics dict to 1 entry per section."""
+    _commit_enriched(staging_dir, engine)
+    data = _export_enriched(engine, tmp_path, max_metrics=1)
+    assert all(len(s["metrics"]) <= 1 for s in data["sections"])
+
+
+def test_config_env_max_nesting(source_file, staging_dir, engine, monkeypatch):
+    """MDPUB_MAX_NESTING=1 env var causes commit to produce 1 section for the canonical doc."""
+    monkeypatch.setenv("MDPUB_MAX_NESTING", "1")
+    from mdpub.config import load_config
+    settings = load_config()
+    run_extract(str(source_file), "gfm-like", staging_dir)
+    run_commit(engine, max_versions=10, max_nesting=settings.max_nesting, staging_dir=staging_dir)
+    with Session(engine) as s:
+        sections = s.exec(select(Section)).all()
+    assert len(sections) == 1
