@@ -6,7 +6,7 @@ from mdpub.cli.cli import app
 
 
 def test_build_cmd_runs_full_pipeline(tmp_path, monkeypatch):
-    """build produces .mdx and .json output files for each extracted document."""
+    """build produces a .mdx output file with sections in frontmatter (no sidecar JSON)."""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("MDPUB_DB_URL", f"sqlite:///{tmp_path}/test.db")
     (tmp_path / "hello.md").write_text("# Hello\n\nWorld\n")
@@ -19,4 +19,4 @@ def test_build_cmd_runs_full_pipeline(tmp_path, monkeypatch):
 
     assert result.exit_code == 0, result.output
     assert any((tmp_path / "dist").rglob("*.mdx"))
-    assert any((tmp_path / "dist").rglob("*.json"))
+    assert not any((tmp_path / "dist").rglob("*.json"))

@@ -155,11 +155,11 @@ def test_run_export_returns_slug_path_pairs(session, tmp_path):
 
 
 def test_run_export_writes_files(session, tmp_path):
-    """run_export produces both .mdx and .json files on disk."""
+    """run_export produces a .mdx file on disk (no sidecar JSON)."""
     doc = _make_committed_doc(session)
     run_export(session, [doc], tmp_path, "mdx")
     assert (tmp_path / "export-doc.mdx").exists()
-    assert (tmp_path / "export-doc.json").exists()
+    assert not (tmp_path / "export-doc.json").exists()
 
 
 def test_run_export_mirrors_source_dir(session, tmp_path):

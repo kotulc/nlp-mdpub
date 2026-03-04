@@ -127,6 +127,6 @@ def run_export(
     """Write docs to output_dir using an open session. Returns (slug, mdx_path) pairs."""
     results = []
     for doc in docs:
-        mdx_path, _ = write_doc(doc, session, output_dir, fmt, max_tags, max_metrics)
+        mdx_path = write_doc(doc, session, output_dir, fmt, max_tags, max_metrics)
         results.append((doc.slug, mdx_path))
     return results

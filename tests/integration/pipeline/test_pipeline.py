@@ -31,6 +31,11 @@ Section layout after commit with max_nesting=2 (default):
 
 Section layout after commit with max_nesting=1:
     Section 0:  all 4 blocks  (h2 is below the nesting threshold)
+
+Export output:
+    Frontmatter: slug, title, date (+ tags/metrics if enriched; no sections array)
+    Body:        reconstructed markdown blocks in section/position order
+    No sidecar JSON file is produced.
 """
 
 import json
@@ -190,7 +195,7 @@ def test_commit_block_count_nesting_1(source_file, staging_dir, engine):
 # --- export ---
 
 def _build_and_export(source_file, staging_dir, engine, tmp_path, fmt="mdx", max_nesting=2):
-    """Run the full pipeline and return (mdx_path, json_path)."""
+    """Run the full pipeline and return mdx_path."""
     run_extract(str(source_file), "gfm-like", staging_dir)
     run_commit(engine, max_versions=10, max_nesting=max_nesting, staging_dir=staging_dir)
     out = tmp_path / "dist"
@@ -198,25 +203,25 @@ def _build_and_export(source_file, staging_dir, engine, tmp_path, fmt="mdx", max
         from mdpub.crud.models import Document
         docs = s.exec(select(Document)).all()
         results = run_export(s, docs, out, fmt)
-    slug, mdx_path = results[0]
-    json_path = mdx_path.with_suffix(".json")
-    return mdx_path, json_path
+    _, mdx_path = results[0]
+    return mdx_path
 
 
 def test_export_mdx_frontmatter(source_file, staging_dir, engine, tmp_path):
-    """Exported MDX frontmatter contains slug and user fields; no doc_id or hash."""
-    mdx_path, _ = _build_and_export(source_file, staging_dir, engine, tmp_path)
+    """Exported MDX frontmatter contains slug and user fields; no doc_id, hash, or sections."""
+    mdx_path = _build_and_export(source_file, staging_dir, engine, tmp_path)
     fm = yaml.safe_load(mdx_path.read_text().split("---\n")[1])
     assert fm["slug"] == "pipeline-test"
     assert fm["title"] == "Pipeline Test"
     assert fm["date"] == "2026-01-15"
     assert "doc_id" not in fm
     assert "hash" not in fm
+    assert "sections" not in fm
 
 
 def test_export_mdx_body_content(source_file, staging_dir, engine, tmp_path):
     """Exported MDX body is reconstructed from DB blocks in section/position order."""
-    mdx_path, _ = _build_and_export(source_file, staging_dir, engine, tmp_path)
+    mdx_path = _build_and_export(source_file, staging_dir, engine, tmp_path)
     body = mdx_path.read_text().split("---\n\n", 1)[1]
     assert "# Introduction" in body
     assert "An introductory paragraph." in body
@@ -224,31 +229,15 @@ def test_export_mdx_body_content(source_file, staging_dir, engine, tmp_path):
     assert "More detailed content." in body
 
 
-def test_export_json_schema(source_file, staging_dir, engine, tmp_path):
-    """Sidecar JSON has exactly: slug, path, committed_at, frontmatter, sections."""
-    _, json_path = _build_and_export(source_file, staging_dir, engine, tmp_path)
-    data = json.loads(json_path.read_text())
-    assert set(data.keys()) == {"slug", "path", "committed_at", "frontmatter", "sections"}
-
-
-def test_export_json_section_count(source_file, staging_dir, engine, tmp_path):
-    """Sidecar JSON sections array matches the number of DB sections (max_nesting=2)."""
-    _, json_path = _build_and_export(source_file, staging_dir, engine, tmp_path)
-    data = json.loads(json_path.read_text())
-    assert len(data["sections"]) == 2
-
-
-def test_export_json_section_schema(source_file, staging_dir, engine, tmp_path):
-    """Each sidecar section has exactly position, tags, and metrics — no block content."""
-    _, json_path = _build_and_export(source_file, staging_dir, engine, tmp_path)
-    for sec in json.loads(json_path.read_text())["sections"]:
-        assert set(sec.keys()) == {"position", "tags", "metrics"}
-        assert "blocks" not in sec
+def test_export_no_json_sidecar(source_file, staging_dir, engine, tmp_path):
+    """Export produces no .json sidecar file alongside the .mdx."""
+    mdx_path = _build_and_export(source_file, staging_dir, engine, tmp_path)
+    assert not mdx_path.with_suffix(".json").exists()
 
 
 def test_export_md_format(source_file, staging_dir, engine, tmp_path):
     """output_format=md produces a .md file instead of .mdx."""
-    mdx_path, _ = _build_and_export(source_file, staging_dir, engine, tmp_path, fmt="md")
+    mdx_path = _build_and_export(source_file, staging_dir, engine, tmp_path, fmt="md")
     assert mdx_path.suffix == ".md"
     assert mdx_path.exists()
 
@@ -291,14 +280,14 @@ def _commit_enriched(staging_dir, engine, max_nesting=2):
 
 
 def _export_enriched(engine, tmp_path, max_tags=0, max_metrics=0):
-    """Export the committed enriched doc with the given limits; return the sidecar JSON dict."""
+    """Export the committed enriched doc; return the frontmatter dict from the .mdx file."""
     out = tmp_path / "dist"
     with Session(engine) as s:
         from mdpub.crud.models import Document
         docs = s.exec(select(Document)).all()
         results = run_export(s, docs, out, "mdx", max_tags=max_tags, max_metrics=max_metrics)
     _, mdx_path = results[0]
-    return json.loads(mdx_path.with_suffix(".json").read_text())
+    return yaml.safe_load(mdx_path.read_text().split("---\n")[1])
 
 
 def test_max_nesting_1_produces_one_section(source_file, staging_dir, engine):
@@ -319,26 +308,25 @@ def test_max_nesting_2_produces_two_sections(source_file, staging_dir, engine):
     assert len(sections) == 2
 
 
-def test_max_tags_limits_sidecar_output(staging_dir, engine, tmp_path):
-    """max_tags=2 truncates the tags list to 2 entries in the exported sidecar JSON."""
+def test_max_tags_limits_output(staging_dir, engine, tmp_path):
+    """max_tags=2 truncates the doc-level tags dict to 2 entries in the exported frontmatter."""
     _commit_enriched(staging_dir, engine)
-    data = _export_enriched(engine, tmp_path, max_tags=2)
-    assert all(len(s["tags"]) <= 2 for s in data["sections"])
+    fm = _export_enriched(engine, tmp_path, max_tags=2)
+    assert len(fm["tags"]) <= 2
 
 
 def test_max_tags_zero_is_unlimited(staging_dir, engine, tmp_path):
     """max_tags=0 (default) exports all 3 tags without truncation."""
     _commit_enriched(staging_dir, engine)
-    data = _export_enriched(engine, tmp_path, max_tags=0)
-    tag_counts = [len(s["tags"]) for s in data["sections"]]
-    assert max(tag_counts) == 3
+    fm = _export_enriched(engine, tmp_path, max_tags=0)
+    assert len(fm["tags"]) == 3
 
 
-def test_max_metrics_limits_sidecar_output(staging_dir, engine, tmp_path):
-    """max_metrics=1 truncates the metrics dict to 1 entry per section."""
+def test_max_metrics_limits_output(staging_dir, engine, tmp_path):
+    """max_metrics=1 truncates the doc-level metrics dict to 1 entry."""
     _commit_enriched(staging_dir, engine)
-    data = _export_enriched(engine, tmp_path, max_metrics=1)
-    assert all(len(s["metrics"]) <= 1 for s in data["sections"])
+    fm = _export_enriched(engine, tmp_path, max_metrics=1)
+    assert len(fm["metrics"]) == 1
 
 
 def test_config_env_max_nesting(source_file, staging_dir, engine, monkeypatch):

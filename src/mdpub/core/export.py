@@ -1,6 +1,5 @@
-"""Export pipeline: build MDX/MD content, sidecar JSON, and write output files"""
+"""Export pipeline: build MDX/MD content and write output files"""
 
-import json
 from pathlib import Path
 
 import yaml
@@ -21,53 +20,21 @@ def build_body(sections: list[Section], blocks_by_section: dict) -> str:
     return "\n\n".join(parts)
 
 
-def build_mdx(doc: Document, body: str) -> str:
-    """Return body with a merged YAML frontmatter block prepended (slug + user fields only)."""
+def build_mdx(
+    doc: Document,
+    body: str,
+    tags: dict[str, float] | None = None,
+    metrics: dict[str, float] | None = None,
+    ) -> str:
+    """Return body with a merged YAML frontmatter block prepended (slug + user fields + tags/metrics)."""
     fm = dict(doc.frontmatter or {})
     fm['slug'] = doc.slug
+    if tags:
+        fm['tags'] = tags
+    if metrics:
+        fm['metrics'] = metrics
     header = yaml.dump(fm, default_flow_style=False, allow_unicode=True, sort_keys=False)
     return f"---\n{header}---\n\n{body.lstrip()}"
-
-
-def build_sidecar(
-    doc: Document,
-    sections: list[Section],
-    tags_by_section: dict,
-    metrics_by_section: dict,
-    max_tags: int = 0,
-    max_metrics: int = 0,
-    ) -> dict:
-    """Build the minimal sidecar JSON dict: slug, path, committed_at, frontmatter, sections.
-
-    Each section entry contains only position, tags (ordered by SectionTag.position),
-    and metrics. Hidden sections are excluded.
-    max_tags / max_metrics limit entries per section (0 = unlimited).
-    """
-    tag_limit    = max_tags    or None
-    metric_limit = max_metrics or None
-    return {
-        "slug": doc.slug,
-        "path": doc.path,
-        "committed_at": doc.committed_at.isoformat() if doc.committed_at else None,
-        "frontmatter": doc.frontmatter or {},
-        "sections": [
-            {
-                "position": s.position,
-                "tags": dict(
-                    list({
-                        st.tag_name: st.relevance
-                        for st in sorted(tags_by_section.get(s.id, []), key=lambda t: t.position or 0)
-                    }.items())[:tag_limit]
-                ),
-                "metrics": dict(
-                    list({m.name: m.value for m in metrics_by_section.get(s.id, [])}.items())
-                    [:metric_limit]
-                ),
-            }
-            for s in sorted(sections, key=lambda s: s.position)
-            if not s.hidden
-        ],
-    }
 
 
 def write_doc(
@@ -77,13 +44,15 @@ def write_doc(
     fmt: str = 'mdx',
     max_tags: int = 0,
     max_metrics: int = 0,
-    ) -> tuple[Path, Path]:
-    """Write MDX/MD + sidecar JSON for a single document.
+    ) -> Path:
+    """Write MDX/MD for a single document with aggregated tags/metrics in frontmatter.
 
+    Tags and metrics are merged across all non-hidden sections (last-wins on duplicate keys).
+    max_tags / max_metrics truncate the output (0 = unlimited).
     Output path mirrors the source directory structure:
-      output_dir / Path(doc.path).parent / doc.slug.{fmt|json}
+      output_dir / Path(doc.path).parent / doc.slug.{fmt}
 
-    Returns (mdx_path, json_path).
+    Returns mdx_path.
     """
     src = Path(doc.path)
     dest_dir = output_dir / src.parent
@@ -94,22 +63,27 @@ def write_doc(
         s.id: session.exec(select(SectionBlock).where(SectionBlock.section_id == s.id)).all()
         for s in sections
     }
-    tags_by_section = {
-        s.id: session.exec(select(SectionTag).where(SectionTag.section_id == s.id)).all()
-        for s in sections
-    }
-    metrics_by_section = {
-        s.id: session.exec(select(SectionMetric).where(SectionMetric.section_id == s.id)).all()
-        for s in sections
-    }
+
+    # Aggregate tags/metrics across non-hidden sections in position order.
+    tags: dict[str, float] = {}
+    metrics: dict[str, float] = {}
+    for s in sorted(sections, key=lambda s: s.position):
+        if s.hidden:
+            continue
+        for st in sorted(
+            session.exec(select(SectionTag).where(SectionTag.section_id == s.id)).all(),
+            key=lambda t: t.position or 0,
+        ):
+            tags[st.tag_name] = st.relevance
+        for m in session.exec(select(SectionMetric).where(SectionMetric.section_id == s.id)).all():
+            metrics[m.name] = m.value
+
+    if max_tags:
+        tags = dict(list(tags.items())[:max_tags])
+    if max_metrics:
+        metrics = dict(list(metrics.items())[:max_metrics])
 
     body = build_body(sections, blocks_by_section)
     mdx_path = dest_dir / f"{doc.slug}.{fmt}"
-    json_path = dest_dir / f"{doc.slug}.json"
-
-    mdx_path.write_text(build_mdx(doc, body), encoding='utf-8')
-    json_path.write_text(
-        json.dumps(build_sidecar(doc, sections, tags_by_section, metrics_by_section, max_tags, max_metrics), indent=2),
-        encoding='utf-8',
-    )
-    return mdx_path, json_path
+    mdx_path.write_text(build_mdx(doc, body, tags or None, metrics or None), encoding='utf-8')
+    return mdx_path
