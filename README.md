@@ -36,16 +36,19 @@ mdpub export          # write standardized MD/MDX + sidecar JSON to output dir
 
 ## Configuration
 All settings follow a four-tier priority (highest to lowest):
-**CLI option → `MDPUB_DB_URL` env var → `config.yaml` → built-in default**
+**CLI option → `MDPUB_<FIELD>` env var → `config.yaml` → built-in default**
 
-Place a `config.yaml` in your working directory to set project-wide defaults. Set `MDPUB_DB_URL`
-in your shell environment to override the database for a session. Pass CLI options for per-run overrides.
+Place a `config.yaml` in your working directory to set project-wide defaults. Any setting can be
+overridden with `MDPUB_<FIELD>` env vars (e.g. `MDPUB_DB_URL`, `MDPUB_MAX_NESTING`) for a session.
+Pass CLI options for per-run overrides.
 
 | Setting | Default | Description |
 |---------|---------|-------------|
 | `db_url` | `sqlite:///mdpub.db` | SQLAlchemy connection string |
 | `max_nesting` | `6` | Max heading depth before child content is flattened |
 | `max_versions` | `10` | Max stored versions per document; `0` disables versioning |
+| `max_tags` | `0` | Max tags per section in export; `0` = unlimited |
+| `max_metrics` | `0` | Max metrics per section in export; `0` = unlimited |
 | `output_dir` | `dist` | Output directory for exported MD/MDX + JSON files |
 | `output_format` | `mdx` | Markdown output format: `md` or `mdx` |
 | `parser_config` | `gfm-like` | MarkdownIt parser preset name |
@@ -88,16 +91,17 @@ For each document, `export` produces:
 
 | File | Description |
 |------|-------------|
-| `<slug>.md/mdx` | Standardized MD/MDX with merged frontmatter (slug, doc_id, hash, tags) |
-| `<slug>.json` | Full metadata: frontmatter, blocks, metrics, version history |
+| `<slug>.md/mdx` | Standardized MD/MDX with frontmatter (slug + user fields only) |
+| `<slug>.json` | Minimal metadata: frontmatter, sections with position, tags, and metrics |
 
 
-### Database
-Set `MDPUB_DB_URL` to switch databases without editing `config.yaml`. It takes precedence
-over any `db_url` set in `config.yaml`:
-```bash
-export MDPUB_DB_URL="postgresql+psycopg://user:pass@localhost/mdpub"
-```
+### Enrichment (optional)
+Between `extract` and `commit`, the staging JSON in `.mdpub/staging/` can be annotated by an
+external tool. Each block supports:
+- `tags`: `{tag_name: relevance_score}` — topic labels with a 0–1 relevance float
+- `metrics`: `{metric_name: value}` — numeric measurements (readability, complexity, etc.)
+
+These values are aggregated to the section level at commit time and included in the sidecar JSON.
 
 
 ## Architecture
@@ -118,10 +122,10 @@ nlp-mdpub/
 The command line interface package contains all modules that define the CLI app, its available commands, options, flags, and interfaces to the `core` logic and `crud` layers. 
 
 ```
-cli/                
+cli/
   cli.py              # CLI interface entrypoint (Typer command based)
   commands.py         # Defines available commands (e.g. init, extract, commit, export)
-  config.py           # Loads user options and configurations
+config.py             # Settings model (Pydantic) and config.yaml / env var loader
 ```
 
 
@@ -130,17 +134,18 @@ The core package contains all of the internal logic leveraged by the pipeline an
 
 ```
 core/
-  extract/            # Config based conversion of parsed outputs
-    extract.py        # Convert parsed content to standard representation
-    sections.py       # Conversion logic for the standard representation of document content
-    blocks.py         # Conversion logic for content blocks (headings, code, lists, images, tables)
+  extract/            # Parsing and block extraction
+    blocks.py         # Token-to-block converters (headings, code, lists, images, tables)
+    extract.py        # Orchestrates parse → blocks → StagedDoc assembly
+    parse.py          # File discovery, markdown parsing, frontmatter and token extraction
   utils/              # Core utility functions
-    diff.py           # Functionality to present unified diffs between document versions
-    slug.py           # Document slugification utility
-    hashing.py        # SHA-256 content hashing utilities
-  export.py           # Config based DB to MDX + JSON output logic
-  parse.py            # File discovery, markdown parsing, frontmatter and token conversion
-  pipeline.py         # Orchestrates parse → export pipeline
+    diff.py           # Unified diff between document versions
+    hashing.py        # SHA-256 content hashing
+    slug.py           # Document slugification
+    tokens.py         # markdown-it token utilities
+  export.py           # DB → MDX/MD + sidecar JSON output
+  models.py           # Staging contract: StagedBlock, StagedDoc (Pydantic)
+  pipeline.py         # run_extract / run_commit / run_export orchestration
 ```
 
 
